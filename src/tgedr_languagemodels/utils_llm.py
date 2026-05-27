@@ -5,6 +5,22 @@ temperature scaling, and greedy token selection for transformer models.
 """
 
 import torch
+import json
+import gzip
+import pickle
+from pathlib import Path
+
+
+def text_to_token_ids(text, tokenizer) -> torch.Tensor:
+    encoded = tokenizer.encode(text, allowed_special={"<|endoftext|>"})
+    encoded_tensor = torch.tensor(encoded).unsqueeze(0)  # 1  .unsqueeze(0) adds the batch dimension
+    return encoded_tensor
+
+
+def token_ids_to_text(token_ids, tokenizer) -> str:
+    flat = token_ids.squeeze(0)  # 2 Removes batch dimension
+    return tokenizer.decode(flat.tolist())
+
 
 # ### ===>>> Top-k sampling - when combined with probabilistic sampling and temperature scaling, can improve the text generation results.
 # In top-k sampling, we can restrict the sampled tokens to the top-k most likely tokens and exclude all other tokens from the selection process
@@ -40,3 +56,48 @@ def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=No
 # 3 Applies temperature scaling
 # 4 Carries out greedy next-token selection as before when temperature scaling is disabled
 # 5 Stops generating early if end-of-sequence token is encountered
+
+def _is_pickle_path(path: Path) -> bool:
+    suffixes = path.suffixes
+    if suffixes[-1] == ".gz" and len(suffixes) > 1:
+        return suffixes[-2] in {".pickle", ".pkl"}
+    return suffixes[-1] in {".pickle", ".pkl"}
+
+
+def save_dict(data, target_path, *, use_pickle: bool | None = None, compress: bool = False) -> None:
+    path = Path(target_path)
+    if use_pickle is None:
+        use_pickle = _is_pickle_path(path)
+
+    if use_pickle:
+        opener = gzip.open if compress or path.suffix == ".gz" else open
+        with opener(path, "wb") as f:
+            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        return
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def load_dict(source_path, *, use_pickle: bool | None = None, compress: bool = False):
+    path = Path(source_path)
+    if use_pickle is None:
+        use_pickle = _is_pickle_path(path)
+
+    if use_pickle:
+        opener = gzip.open if compress or path.suffix == ".gz" else open
+        with opener(path, "rb") as f:
+            return pickle.load(f)
+
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_pickle_compressed(data, target_path) -> None:
+    """Save Python data using pickle and gzip compression."""
+    save_dict(data, target_path, use_pickle=True, compress=True)
+
+
+def load_pickle_compressed(source_path):
+    """Load Python data saved with pickle and gzip compression."""
+    return load_dict(source_path, use_pickle=True, compress=True)
