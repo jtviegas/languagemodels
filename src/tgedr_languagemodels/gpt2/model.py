@@ -1,12 +1,22 @@
 """GPT model definition and supporting layers for language modeling."""
 
+from attr import dataclass
+
 from tgedr_languagemodels.blocks import TransformerBlock
 from tgedr_languagemodels.layers import LayerNorm
 import torch
 from torch import nn
 
 
-class GPTModel(nn.Module):
+@dataclass
+class ModelConfig:
+    vocabulary_size: int
+    embeddings_dimension: int
+    sequence_length: int
+    n_layers: int
+    drop_rate: float
+
+class GPT2Model(nn.Module):
     def __init__(self, cfg: dict) -> None:
         super().__init__()
         self.tok_emb = nn.Embedding(cfg["vocab_size"], cfg["emb_dim"])
