@@ -9,6 +9,7 @@ import json
 import gzip
 import pickle
 from pathlib import Path
+import pandas as pd
 
 
 def text_to_token_ids(text, tokenizer) -> torch.Tensor:
@@ -101,3 +102,21 @@ def save_pickle_compressed(data, target_path) -> None:
 def load_pickle_compressed(source_path):
     """Load Python data saved with pickle and gzip compression."""
     return load_dict(source_path, use_pickle=True, compress=True)
+
+def longest_encoded_length(encoded_texts: list[list[int]]) -> int:
+    max_length = 0
+    for encoded_text in encoded_texts:
+        encoded_length = len(encoded_text)
+        if encoded_length > max_length:
+            max_length = encoded_length
+    return max_length
+
+def harmonize_text_sequences(df: pd.DataFrame, tokenizer, text_col="text"):
+    encoded_texts: list[list[int]] = [tokenizer.encode(text) for text in df[text_col]]
+    max_length = longest_encoded_length(encoded_texts)
+    encoded_texts = [
+        encoded_text + [tokenizer.eot_token] * 
+        (max_length - len(encoded_text))
+        for encoded_text in encoded_texts
+    ]
+    return encoded_texts

@@ -181,4 +181,4 @@ cython_debug/
 tests-results.xml
 CHANGELOG
 .vscode
-data/model_weights
+.data/
