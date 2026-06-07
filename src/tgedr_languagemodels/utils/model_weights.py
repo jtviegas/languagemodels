@@ -9,13 +9,41 @@ import torch
 import numpy as np
 
 
-def assign(left, right):
+def assign(left, right) -> torch.nn.Parameter:
+    """Validate shapes and return right as a new Parameter with the same shape as left.
+
+    Parameters
+    ----------
+    left : torch.Tensor
+        Reference tensor whose shape must match right.
+    right : array-like
+        Source data to wrap as a parameter.
+
+    Returns
+    -------
+    torch.nn.Parameter
+        Parameter wrapping the values of right.
+
+    Raises
+    ------
+    ValueError
+        If left and right have different shapes.
+    """
     if left.shape != right.shape:
         raise ValueError(f"Shape mismatch. Left: {left.shape}, Right: {{right.shape}}")  # noqa: EM102, TRY003
     return torch.nn.Parameter(torch.tensor(right))
 
 
-def load_weights_into_gpt(gpt, params):  # 1
+def load_weights_into_gpt(gpt, params) -> None:  # 1
+    """Load pre-trained weights from a params dictionary into a GPT model instance.
+
+    Parameters
+    ----------
+    gpt : GPT2Model
+        The GPT model whose weights will be updated in-place.
+    params : dict
+        Dictionary of pre-trained weights as returned by the GPT-2 checkpoint loader.
+    """
     gpt.pos_emb.weight = assign(gpt.pos_emb.weight, params["wpe"])
     gpt.tok_emb.weight = assign(gpt.tok_emb.weight, params["wte"])
 
@@ -61,7 +89,7 @@ def load_weights_into_gpt(gpt, params):  # 1
     gpt.final_norm.shift = assign(gpt.final_norm.shift, params["b"])
     gpt.out_head.weight = assign(gpt.out_head.weight, params["wte"])  # 4
 
-    # 1 Sets the model’s positional and token embedding weights to those specified in params.
+    # 1 Sets the model's positional and token embedding weights to those specified in params.
     # 2 Iterates over each transformer block in the model
     # 3 The np.split function is used to divide the attention and bias weights into three equal parts for the query, key, and value components.
     # 4 The original GPT-2 model by OpenAI reused the token embedding weights in the output layer to reduce the total number of parameters, which is a concept known as weight tying.
