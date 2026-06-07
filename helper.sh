@@ -204,17 +204,18 @@ sca_check_safety(){
   actual_result="$?"
   info "[sca_check_safety] actual exit code: $actual_result"
   
-  # Exit codes: 0=success, 64=vulnerabilities found, 68=policy violation
-  if [ "$actual_result" -eq "64" ] || [ "$actual_result" -eq "68" ]; then
-    warn "[sca_check_safety] vulnerabilities or policy violations found (exit code: $actual_result)"
-    result=0  # Don't fail CI on vulnerabilities for now
-  elif [ "$actual_result" -ne "0" ]; then
-    warn "[sca_check_safety] scan failed with exit code: $actual_result"
-    result=0  # Don't fail CI
-  else
-    result=0
-  fi
-  
+  # # Exit codes: 0=success, 64=vulnerabilities found, 68=policy violation
+  # if [ "$actual_result" -eq "64" ] || [ "$actual_result" -eq "68" ]; then
+  #   warn "[sca_check_safety] vulnerabilities or policy violations found (exit code: $actual_result)"
+  #   result=0  # Don't fail CI on vulnerabilities for now
+  # elif [ "$actual_result" -ne "0" ]; then
+  #   warn "[sca_check_safety] scan failed with exit code: $actual_result"
+  #   result=0  # Don't fail CI
+  # else
+  #   result=0
+  # fi
+  result="$actual_result"
+
   info "[sca_check_safety] scan completed with exit code: $actual_result (treating as: $result)"
   cd "$_pwd"
 
