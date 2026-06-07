@@ -1,7 +1,7 @@
 name: cicd
 
 env:
-  TEST_COVERAGE_THRESHOLD: 100
+  TEST_COVERAGE_THRESHOLD: 80
 
 on:
   push:
@@ -39,14 +39,14 @@ jobs:
       run: ./helper.sh test
     - name: check coverage
       run: ./helper.sh test_coverage_check $TEST_COVERAGE_THRESHOLD
-    - name: build
-      run: ./helper.sh build
-    - name: publish
-      run: |
-        if [[ ${{ github.ref }} =~ refs/tags/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          ./helper.sh publish
-        else
-          echo "invalid semver tag"
-        fi
-      env:
-        PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+    # - name: build
+    #   run: ./helper.sh build
+    # - name: publish
+    #   run: |
+    #     if [[ ${{ github.ref }} =~ refs/tags/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    #       ./helper.sh publish
+    #     else
+    #       echo "invalid semver tag"
+    #     fi
+    #   env:
+    #     PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}

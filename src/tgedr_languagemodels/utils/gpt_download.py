@@ -2,7 +2,7 @@
 # Source for "Build a Large Language Model From Scratch"
 #   - https://www.manning.com/books/build-a-large-language-model-from-scratch
 # Code: https://github.com/rasbt/LLMs-from-scratch
-
+"""GPT-2 model download and checkpoint loading utilities."""
 
 import os
 
@@ -14,10 +14,30 @@ from tqdm import tqdm
 
 
 def download_and_load_gpt2(model_size, models_dir):
+    """Download GPT-2 weights and return settings and parameter tensors.
+
+    Parameters
+    ----------
+    model_size : str
+        One of "124M", "355M", "774M", "1558M".
+    models_dir : str
+        Local directory where model files will be stored.
+
+    Returns
+    -------
+    tuple[dict, dict]
+        settings: model hyper-parameters from hparams.json.
+        params: nested dictionary of numpy arrays with model weights.
+
+    Raises
+    ------
+    ValueError
+        If model_size is not one of the allowed sizes.
+    """
     # Validate model size
     allowed_sizes = ("124M", "355M", "774M", "1558M")
     if model_size not in allowed_sizes:
-        raise ValueError(f"Model size not in {allowed_sizes}")
+        raise ValueError(f"Model size not in {allowed_sizes}")  # noqa: EM102, TRY003
 
     # Define paths
     model_dir = os.path.join(models_dir, model_size)
@@ -46,7 +66,30 @@ def download_and_load_gpt2(model_size, models_dir):
 
 
 def download_file(url, destination, backup_url=None):
+    """Download a file from url to destination, falling back to backup_url on failure.
+
+    Parameters
+    ----------
+    url : str
+        Primary URL to download from.
+    destination : str
+        Local file path to save the downloaded content.
+    backup_url : str or None, optional
+        Fallback URL used if the primary download fails (default: None).
+    """
     def _attempt_download(download_url):
+        """Attempt to download from download_url; return True on success.
+
+        Parameters
+        ----------
+        download_url : str
+            URL to attempt the download from.
+
+        Returns
+        -------
+        bool
+            True if the file was downloaded or already up-to-date.
+        """
         response = requests.get(download_url, stream=True, timeout=60)
         response.raise_for_status()
 
@@ -124,6 +167,20 @@ def download_file(url, destination):
 
 
 def load_gpt2_params_from_tf_ckpt(ckpt_path, settings):
+    """Load GPT-2 weights from a TensorFlow checkpoint into a nested Python dictionary.
+
+    Parameters
+    ----------
+    ckpt_path : str
+        Path to the TensorFlow checkpoint.
+    settings : dict
+        Model hyper-parameters (must contain "n_layer").
+
+    Returns
+    -------
+    dict
+        Nested dictionary of numpy arrays keyed by layer and weight names.
+    """
     # Initialize parameters dictionary with empty blocks for each layer
     params = {"blocks": [{} for _ in range(settings["n_layer"])]}
 

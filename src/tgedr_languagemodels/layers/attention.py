@@ -1,3 +1,10 @@
+"""Attention mechanisms for transformer networks.
+
+This module provides multi-head attention components used in transformer
+architectures, enabling models to focus on different parts of the input
+sequence simultaneously.
+"""
+
 import torch
 from torch import nn
 
@@ -11,7 +18,7 @@ class MultiHeadAttention(nn.Module):
         output_dimension: int,
         context_length: int,
         heads: int,
-        qkv_bias: bool = False,
+        qkv_bias: bool = False,  # noqa: FBT001, FBT002
         dropout: float = 0.5,
     ) -> None:
         """Initialize the MultiHeadAttention module.
@@ -32,7 +39,8 @@ class MultiHeadAttention(nn.Module):
             Dropout rate (default: 0.5).
         """
         super().__init__()
-        assert output_dimension % heads == 0, "output_dimension must be divisible by heads"
+        if output_dimension % heads != 0:
+            raise ValueError("output_dimension must be divisible by heads")  # noqa: EM101, TRY003
 
         self.embedding_dimension = embeddings_dimension
         self.output_dimension = output_dimension
@@ -48,7 +56,19 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.register_buffer("mask", torch.triu(torch.ones(context_length, context_length), diagonal=1))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Compute multi-head self-attention.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (n_sequences, sequence_length, embeddings_dimension).
+
+        Returns
+        -------
+        torch.Tensor
+            Output context vectors of shape (n_sequences, sequence_length, output_dimension).
+        """
         n_sequences, sequence_length, embeddings_dimension = x.shape
         keys = self.W_key(x)
         queries = self.W_query(x)

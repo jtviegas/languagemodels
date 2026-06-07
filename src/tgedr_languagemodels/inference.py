@@ -1,13 +1,14 @@
-
+"""Inference utilities for autoregressive text generation with GPT models."""
 
 import torch
 
 
-
-def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None, eos_id=None):
+def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None, eos_id=None) -> torch.Tensor:
     """Generates text from a language model using top-k sampling and temperature scaling.
-    
-      generate the new tokens one at a time, feeding the updated sequence back into the model until we have generated the desired number of new tokens or encounter an end-of-sequence token.
+
+    Generates the new tokens one at a time, feeding the updated sequence back into the
+    model until the desired number of new tokens is produced or an end-of-sequence token
+    is encountered.
     """
     for _ in range(max_new_tokens):  # 1n - gets logits and only focuses on the last time step.
         idx_cond = idx[:, -context_size:]

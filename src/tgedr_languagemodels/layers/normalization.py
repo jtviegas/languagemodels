@@ -1,5 +1,8 @@
+"""Layer normalization for transformer neural network architectures."""
+
 import torch
 from torch import nn
+
 
 class LayerNormalization(nn.Module):
     """Layer normalization over the last embedding dimension."""
