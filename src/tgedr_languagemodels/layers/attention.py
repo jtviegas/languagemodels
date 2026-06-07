@@ -1,39 +1,5 @@
 import torch
-import torch.nn as nn
-
-from tgedr_languagemodels.layers import FeedForward, LayerNorm
-
-
-class TransformerBlock(nn.Module):
-    def __init__(self, cfg):
-        super().__init__()
-        self.att = MultiHeadAttention(
-            embedding_dimension=cfg["emb_dim"],
-            output_dimension=cfg["emb_dim"],
-            context_length=cfg["context_length"],
-            heads=cfg["n_heads"],
-            dropout=cfg["drop_rate"],
-            qkv_bias=cfg["qkv_bias"],
-        )
-        self.ff = FeedForward(cfg)
-        self.norm1 = LayerNorm(cfg["emb_dim"])
-        self.norm2 = LayerNorm(cfg["emb_dim"])
-        self.drop_shortcut = nn.Dropout(cfg["drop_rate"])
-
-    def forward(self, x):
-        # 1
-        shortcut = x
-        x = self.norm1(x)
-        x = self.att(x)
-        x = self.drop_shortcut(x)
-        x = x + shortcut  # 2
-
-        shortcut = x  # 3
-        x = self.norm2(x)
-        x = self.ff(x)
-        x = self.drop_shortcut(x)
-        x = x + shortcut  # 4
-        return x
+from torch import nn
 
 
 class MultiHeadAttention(nn.Module):
@@ -41,7 +7,7 @@ class MultiHeadAttention(nn.Module):
 
     def __init__(
         self,
-        embedding_dimension: int,
+        embeddings_dimension: int,
         output_dimension: int,
         context_length: int,
         heads: int,
@@ -52,7 +18,7 @@ class MultiHeadAttention(nn.Module):
 
         Parameters
         ----------
-        embedding_dimension : int
+        embeddings_dimension : int
             Dimension of the input embeddings.
         output_dimension : int
             Dimension of the output.
@@ -68,22 +34,22 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         assert output_dimension % heads == 0, "output_dimension must be divisible by heads"
 
-        self.embedding_dimension = embedding_dimension
+        self.embedding_dimension = embeddings_dimension
         self.output_dimension = output_dimension
         self.context_length = context_length
         self.head_dimension = output_dimension // heads
         self.heads = heads
 
-        self.W_query = nn.Linear(embedding_dimension, output_dimension, bias=qkv_bias)
-        self.W_key = nn.Linear(embedding_dimension, output_dimension, bias=qkv_bias)
-        self.W_value = nn.Linear(embedding_dimension, output_dimension, bias=qkv_bias)
+        self.W_query = nn.Linear(embeddings_dimension, output_dimension, bias=qkv_bias)
+        self.W_key = nn.Linear(embeddings_dimension, output_dimension, bias=qkv_bias)
+        self.W_value = nn.Linear(embeddings_dimension, output_dimension, bias=qkv_bias)
 
         self.out_projection = nn.Linear(output_dimension, output_dimension)
         self.dropout = nn.Dropout(dropout)
         self.register_buffer("mask", torch.triu(torch.ones(context_length, context_length), diagonal=1))
 
     def forward(self, x):
-        n_sequences, sequence_length, embedding_dimension = x.shape
+        n_sequences, sequence_length, embeddings_dimension = x.shape
         keys = self.W_key(x)
         queries = self.W_query(x)
         values = self.W_value(x)
