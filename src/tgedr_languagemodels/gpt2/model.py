@@ -2,32 +2,28 @@
 
 from attr import dataclass
 
-from tgedr_languagemodels.blocks import TransformerBlock
-from tgedr_languagemodels.layers import LayerNorm
 import torch
 from torch import nn
 
+from tgedr_languagemodels.configuration import BaseModelConfig
+from tgedr_languagemodels.layers.blocks import TransformerBlock
+from tgedr_languagemodels.layers.normalization import LayerNormalization
 
-@dataclass
-class ModelConfig:
-    vocabulary_size: int
-    embeddings_dimension: int
-    sequence_length: int
-    n_layers: int
-    drop_rate: float
+
+
 
 class GPT2Model(nn.Module):
-    def __init__(self, cfg: dict) -> None:
+    def __init__(self, cfg: BaseModelConfig) -> None:
         super().__init__()
-        self.tok_emb = nn.Embedding(cfg["vocab_size"], cfg["emb_dim"])
-        self.pos_emb = nn.Embedding(cfg["context_length"], cfg["emb_dim"])
+        self.tok_emb = nn.Embedding(cfg.vocabulary_size, cfg.embeddings_dimension)
+        self.pos_emb = nn.Embedding(cfg.context_length, cfg.embeddings_dimension)
 
-        self.drop_emb = nn.Dropout(cfg["drop_rate"])
+        self.drop_emb = nn.Dropout(cfg.drop_rate)
 
-        self.trf_blocks = nn.Sequential(*[TransformerBlock(cfg) for _ in range(cfg["n_layers"])])
+        self.trf_blocks = nn.Sequential(*[TransformerBlock(cfg) for _ in range(cfg.n_layers)])
 
-        self.final_norm = LayerNorm(cfg["emb_dim"])
-        self.out_head = nn.Linear(cfg["emb_dim"], cfg["vocab_size"], bias=False)
+        self.final_norm = LayerNormalization(cfg.embeddings_dimension)
+        self.out_head = nn.Linear(cfg.embeddings_dimension, cfg.vocabulary_size, bias=False)
 
     def forward(self, in_idx: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len = in_idx.shape

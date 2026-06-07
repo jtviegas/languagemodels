@@ -111,9 +111,9 @@ def longest_encoded_length(encoded_texts: list[list[int]]) -> int:
             max_length = encoded_length
     return max_length
 
-def harmonize_text_sequences(df: pd.DataFrame, tokenizer, text_col="text"):
+def harmonize_text_sequences(df: pd.DataFrame, tokenizer, text_col="text", sequence_length=None):
     encoded_texts: list[list[int]] = [tokenizer.encode(text) for text in df[text_col]]
-    max_length = longest_encoded_length(encoded_texts)
+    max_length = longest_encoded_length(encoded_texts) if sequence_length is None else sequence_length
     encoded_texts = [
         encoded_text + [tokenizer.eot_token] * 
         (max_length - len(encoded_text))
