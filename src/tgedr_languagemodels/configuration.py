@@ -37,6 +37,19 @@ class BaseModelConfig:
     qkv_bias: bool = False
 
 
+@dataclass
+class BaseClassifierConfig(BaseModelConfig):
+    """Configuration for a text classifier model.
+
+    Attributes
+    ----------
+    n_classes : int
+        Number of output classes for classification. Default is 2 for binary classification.
+    """
+
+    n_classes: int = 2
+
+
 GPT2_MODEL_CONFIGS: dict[str, dict[str, int]] = {
     "gpt2-small (124M)": {"emb_dim": 768, "n_layers": 12, "n_heads": 12},
     "gpt2-medium (355M)": {"emb_dim": 1024, "n_layers": 24, "n_heads": 16},
