@@ -1,12 +1,19 @@
 """Unit tests for the gpt_download module."""
 
+import types
+import importlib.machinery
+import requests
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 
 # Mock tensorflow before importing the module
 import sys
-sys.modules['tensorflow'] = MagicMock()
+if "tensorflow" not in sys.modules:
+    tf_mock = types.ModuleType("tensorflow")
+    tf_mock.__spec__ = importlib.machinery.ModuleSpec("tensorflow", loader=None)
+    tf_mock.train = MagicMock()
+    sys.modules["tensorflow"] = tf_mock
 
 from tgedr_languagemodels.utils.gpt_download import (
     download_and_load_gpt2,
@@ -42,24 +49,29 @@ class TestDownloadAndLoadGPT2:
         with pytest.raises(ValueError):
             download_and_load_gpt2("", "/tmp")
 
+    @patch("tgedr_languagemodels.utils.gpt_download.load_gpt2_params_from_tf_ckpt")
     @patch("tgedr_languagemodels.utils.gpt_download.download_file")
     @patch("tgedr_languagemodels.utils.gpt_download.tf")
+    @patch("json.load")
     @patch("builtins.open", create=True)
-    def test_download_creates_directory(self, mock_open, mock_tf, mock_download_file) -> None:
-        """Test that download creates model directory."""
-        with patch("os.makedirs") as mock_makedirs:
-            with patch("os.path.join", side_effect=lambda *args: "/".join(str(a) for a in args)):
-                mock_tf.train.latest_checkpoint.return_value = "/path/to/ckpt"
-                mock_open.return_value.__enter__.return_value.read.return_value = "{}"
-                
-                # This will fail at JSON load, but we're testing directory creation
-                try:
-                    download_and_load_gpt2("124M", "/tmp")
-                except Exception:
-                    pass
-                
-                # Verify makedirs was called
-                assert mock_makedirs.called or True  # May not be called due to mock setup
+    def test_download_and_load_success_path(
+        self,
+        mock_open,
+        mock_json_load,
+        mock_tf,
+        mock_download_file,
+        mock_load_params,
+    ) -> None:
+        """Test successful end-to-end path through download_and_load_gpt2."""
+        mock_tf.train.latest_checkpoint.return_value = "/tmp/ckpt"
+        mock_json_load.return_value = {"n_layer": 1}
+        mock_load_params.return_value = {"blocks": [{}]}
+
+        settings, params = download_and_load_gpt2("124M", "/tmp/models")
+
+        assert settings == {"n_layer": 1}
+        assert params == {"blocks": [{}]}
+        assert mock_download_file.call_count == 7
 
 
 class TestDownloadFile:
@@ -106,6 +118,22 @@ class TestDownloadFile:
         with patch("os.path.getsize", return_value=1000):
             with patch("builtins.open", create=True) as mock_file:
                 download_file("http://example.com/file.bin", "/tmp/file.bin")
+
+    @patch("tgedr_languagemodels.utils.gpt_download.requests.get")
+    def test_download_file_fallback_failure_path(self, mock_get) -> None:
+        """Test fallback path when both primary and backup downloads fail."""
+        mock_get.side_effect = requests.exceptions.RequestException("down")
+
+        # Should not raise; function prints an error message and returns
+        download_file("http://primary/file.bin", "/tmp/file.bin", backup_url="http://backup/file.bin")
+
+    @patch("tgedr_languagemodels.utils.gpt_download.requests.get")
+    def test_download_file_unexpected_exception_path(self, mock_get) -> None:
+        """Test generic exception branch in download_file."""
+        mock_get.side_effect = RuntimeError("boom")
+
+        # Should be caught by generic exception handler
+        download_file("http://primary/file.bin", "/tmp/file.bin")
 
     def test_download_file_invalid_url(self) -> None:
         """Test download_file with invalid URL format."""
@@ -184,19 +212,21 @@ class TestLoadGPT2ParamsFromTFCheckpoint:
         """Test parameter loading with various variable name patterns."""
         settings = {"n_layer": 1}
         ckpt_path = "/path/to/checkpoint"
-        
-        # Test various model variable naming patterns
+
+        # Include a layer-prefixed variable to exercise block assignment branch
         mock_tf.train.list_variables.return_value = [
             ("model/ln_f/g", None),
             ("model/ln_f/b", None),
+            ("model/h0/attn/c_attn/w", None),
         ]
-        
+
         import numpy as np
         mock_tf.train.load_variable.return_value = np.array([1.0])
-        
+
         result = load_gpt2_params_from_tf_ckpt(ckpt_path, settings)
-        
+
         assert isinstance(result, dict)
+        assert "attn" in result["blocks"][0]
 
 
 class TestParameterCreationFromCheckpoint:

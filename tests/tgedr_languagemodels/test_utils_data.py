@@ -1,9 +1,10 @@
 """Unit tests for the utils_data module."""
 
+import datasets
 import pandas as pd
 import torch
 
-from tgedr_languagemodels.utils.utils_data import TextDataset
+from tgedr_languagemodels.utils.utils_data import ClassifierDataLoader, TextDataset
 
 
 class DummyTokenizer:
@@ -84,3 +85,47 @@ class TestTextDataset:
 
         assert dataset._longest_encoded_length() == 0
         assert dataset.max_length == 0
+
+
+class TestClassifierDataLoader:
+    """Test suite for ClassifierDataLoader."""
+
+    def _build_dataframe(self, n_per_class: int = 10) -> pd.DataFrame:
+        rows = []
+        for i in range(n_per_class):
+            rows.append({"text": f"pos-{i}", "label": 1, "label_text": "pos"})
+            rows.append({"text": f"neg-{i}", "label": 0, "label_text": "neg"})
+        return pd.DataFrame(rows)
+
+    def test_setup_class_label_casts_column(self) -> None:
+        """_setup_class_label should cast label_text to ClassLabel feature."""
+        df = self._build_dataframe(n_per_class=3)
+        ds = datasets.Dataset.from_pandas(df)
+        loader = ClassifierDataLoader(tokenizer=DummyTokenizer({}), batch_size=2)
+
+        cast_ds = loader._setup_class_label(ds)
+
+        assert str(cast_ds.features["label_text"]) == "ClassLabel(names=['neg', 'pos'])"
+
+    def test_create_returns_train_validation_test_loaders(self) -> None:
+        """create should return all three loaders from a pandas dataframe."""
+        df = self._build_dataframe(n_per_class=10)
+        tok_map = {row["text"]: [idx, idx + 1] for idx, row in enumerate(df.to_dict("records"))}
+        tokenizer = DummyTokenizer(tok_map)
+
+        loader_factory = ClassifierDataLoader(
+            tokenizer=tokenizer,
+            batch_size=4,
+            validation_split=0.2,
+            test_split=0.2,
+        )
+        splits = loader_factory.create(df)
+
+        assert set(splits.keys()) == {"train", "validation", "test"}
+        assert len(splits["train"]) > 0
+        assert len(splits["validation"]) > 0
+        assert len(splits["test"]) > 0
+
+        batch_inputs, batch_targets = next(iter(splits["train"]))
+        assert batch_inputs.dtype == torch.long
+        assert batch_targets.dtype == torch.long

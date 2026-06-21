@@ -59,7 +59,7 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
         self.final_norm = LayerNormalization(cfg.embeddings_dimension)
         self.out_head = nn.Linear(cfg.embeddings_dimension, cfg.n_classes, bias=False)
 
-    def load_weights(self, params: dict) -> None:
+    def _load_weights(self, params: dict) -> None:
         """Load pretrained weights into the model from a parameters dictionary.
 
         Parameters
@@ -122,7 +122,7 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
         self.final_norm.scale = self.assign(self.final_norm.scale, params["g"])
         self.final_norm.shift = self.assign(self.final_norm.shift, params["b"])
 
-    def setup_for_tuning(self, weights: dict) -> None:
+    def pretrain(self, weights: dict) -> None:
         """Prepare the model for fine-tuning by loading pretrained weights.
 
         Parameters
@@ -130,7 +130,7 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
         weights : dict
             Dictionary containing pretrained weights to load into the model.
         """
-        self.load_weights(weights)
+        self._load_weights(weights)
         for param in self.parameters():
             param.requires_grad = False
         # fine-tuning additional layers can noticeably improve the predictive performance of the model
@@ -143,7 +143,7 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
         for param in self.out_head.parameters():
             param.requires_grad = True
 
-    def classify(self, in_idx: torch.Tensor) -> torch.Tensor:
+    def infer(self, in_idx: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model to obtain class logits.
 
         Parameters
@@ -156,8 +156,7 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
         torch.Tensor
             Predicted class indices.
         """
-        device = self.get_device()
-        in_idx = in_idx.to(device)
+        in_idx = in_idx.to(self.device)
         was_training = self._training
         if was_training:
             self.eval()
@@ -167,7 +166,8 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
             self.train()
         return torch.argmax(logits, dim=-1)
 
-    def get_optimizer(self) -> torch.optim.Optimizer:
+    @property
+    def optimizer(self) -> torch.optim.Optimizer:
         """Return an optimizer configured to update only the trainable parameters.
 
         Returns
@@ -177,7 +177,8 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
         """
         return torch.optim.AdamW([p for p in self.parameters() if p.requires_grad], lr=3e-5, weight_decay=0.1)
 
-    def get_device(self) -> torch.device:
+    @property
+    def device(self) -> torch.device:
         """Return the device to run the model on.
 
         Returns
@@ -188,7 +189,7 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
         """
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def train_classifier(
+    def fit(
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
@@ -217,9 +218,8 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
         train_accs, val_accs = [], []
         examples_seen = 0
 
-        device = self.get_device()
+        device = self.device
         self.to(device)
-        optimizer = self.get_optimizer()
 
         for _ in range(num_epochs):  # 2 Main training loop
             if not self._training:
@@ -227,10 +227,10 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
                 self._training = True
 
             for input_batch, target_batch in train_loader:
-                optimizer.zero_grad()  # 4 Resets loss gradients from the previous batch iteration
+                self.optimizer.zero_grad()  # 4 Resets loss gradients from the previous batch iteration
                 loss = self.calculate_batch_loss(input_batch, target_batch, device)
                 loss.backward()  # 5 Calculates loss gradients
-                optimizer.step()  # 6 Updates model weights using loss gradients
+                self.optimizer.step()  # 6 Updates model weights using loss gradients
                 examples_seen += input_batch.shape[0]  # 7 New: tracks examples instead of tokens
 
             # 9 Calculates accuracy after each epoch

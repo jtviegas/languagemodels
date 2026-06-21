@@ -4,6 +4,8 @@ import pytest
 import torch
 import numpy as np
 from unittest.mock import Mock
+from tgedr_languagemodels.configuration import BaseModelConfig
+from tgedr_languagemodels.gpt2.model import GPT2Model
 from tgedr_languagemodels.utils.model_weights import assign, load_weights_into_gpt
 
 
@@ -223,14 +225,71 @@ class TestLoadWeightsIntoGPT:
     def test_load_weights_requires_correct_params_keys(self) -> None:
         """Test that load_weights_into_gpt expects required keys."""
         model = self.create_mock_gpt_model()
-        
+
         # Missing required keys
         params = {
             "wpe": np.random.randn(10, 64),
             # Missing "wte"
             "blocks": []
         }
-        
+
         # Should raise error when trying to access missing keys
         with pytest.raises(KeyError):
             load_weights_into_gpt(model, params)
+
+    def test_load_weights_full_block_path(self) -> None:
+        """Exercise block-level assignments in load_weights_into_gpt."""
+        cfg = BaseModelConfig(
+            vocabulary_size=16,
+            embeddings_dimension=8,
+            context_length=8,
+            n_layers=1,
+            drop_rate=0.0,
+            stride=1,
+            n_heads=2,
+            qkv_bias=True,
+        )
+        model = GPT2Model(cfg)
+
+        params = {
+            "wpe": np.random.randn(*model.pos_emb.weight.shape).astype(np.float32),
+            "wte": np.random.randn(*model.tok_emb.weight.shape).astype(np.float32),
+            "g": np.random.randn(*model.final_norm.scale.shape).astype(np.float32),
+            "b": np.random.randn(*model.final_norm.shift.shape).astype(np.float32),
+            "blocks": [
+                {
+                    "attn": {
+                        "c_attn": {
+                            "w": np.random.randn(cfg.embeddings_dimension, 3 * cfg.embeddings_dimension).astype(np.float32),
+                            "b": np.random.randn(3 * cfg.embeddings_dimension).astype(np.float32),
+                        },
+                        "c_proj": {
+                            "w": np.random.randn(cfg.embeddings_dimension, cfg.embeddings_dimension).astype(np.float32),
+                            "b": np.random.randn(cfg.embeddings_dimension).astype(np.float32),
+                        },
+                    },
+                    "mlp": {
+                        "c_fc": {
+                            "w": np.random.randn(cfg.embeddings_dimension, 4 * cfg.embeddings_dimension).astype(np.float32),
+                            "b": np.random.randn(4 * cfg.embeddings_dimension).astype(np.float32),
+                        },
+                        "c_proj": {
+                            "w": np.random.randn(4 * cfg.embeddings_dimension, cfg.embeddings_dimension).astype(np.float32),
+                            "b": np.random.randn(cfg.embeddings_dimension).astype(np.float32),
+                        },
+                    },
+                    "ln_1": {
+                        "g": np.random.randn(cfg.embeddings_dimension).astype(np.float32),
+                        "b": np.random.randn(cfg.embeddings_dimension).astype(np.float32),
+                    },
+                    "ln_2": {
+                        "g": np.random.randn(cfg.embeddings_dimension).astype(np.float32),
+                        "b": np.random.randn(cfg.embeddings_dimension).astype(np.float32),
+                    },
+                }
+            ],
+        }
+
+        load_weights_into_gpt(model, params)
+
+        assert model.out_head.weight.shape == (cfg.vocabulary_size, cfg.embeddings_dimension)

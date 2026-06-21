@@ -198,6 +198,60 @@ class TestEncodedLengthFunctions:
         assert result == 3
 
 
+class DummyLM(torch.nn.Module):
+    """Small model for testing utils_llm.generate."""
+
+    def __init__(self, vocab_size: int = 8, force_token: int | None = None) -> None:
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.force_token = force_token
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, seq_len = x.shape
+        logits = torch.ones(batch_size, seq_len, self.vocab_size)
+        if self.force_token is not None:
+            logits[:, :, self.force_token] = 100.0
+        return logits
+
+
+class TestGenerate:
+    """Test suite for utils_llm.generate."""
+
+    def test_generate_greedy_branch(self) -> None:
+        model = DummyLM(vocab_size=10)
+        idx = torch.tensor([[1, 2]], dtype=torch.long)
+
+        result = generate(model, idx, max_new_tokens=3, context_size=10, temperature=0.0)
+
+        assert result.shape == (1, 5)
+
+    def test_generate_temperature_sampling_branch(self) -> None:
+        torch.manual_seed(42)
+        model = DummyLM(vocab_size=10)
+        idx = torch.tensor([[1, 2]], dtype=torch.long)
+
+        result = generate(model, idx, max_new_tokens=2, context_size=10, temperature=0.8)
+
+        assert result.shape == (1, 4)
+
+    def test_generate_top_k_branch(self) -> None:
+        model = DummyLM(vocab_size=10)
+        idx = torch.tensor([[1, 2]], dtype=torch.long)
+
+        result = generate(model, idx, max_new_tokens=2, context_size=10, temperature=0.0, top_k=3)
+
+        assert result.shape == (1, 4)
+
+    def test_generate_eos_break_branch(self) -> None:
+        eos_id = 3
+        model = DummyLM(vocab_size=10, force_token=eos_id)
+        idx = torch.tensor([[1, 2]], dtype=torch.long)
+
+        result = generate(model, idx, max_new_tokens=5, context_size=10, temperature=0.0, eos_id=eos_id)
+
+        assert torch.equal(result, idx)
+
+
 class TestHarmonizeTextSequences:
     """Test suite for text sequence harmonization."""
 
@@ -206,7 +260,7 @@ class TestHarmonizeTextSequences:
         df = pd.DataFrame({
             "text": ["hello", "hi there", "goodbye"]
         })
-        
+
         tokenizer = Mock()
         tokenizer.encode.side_effect = [
             [1, 2],
@@ -214,9 +268,9 @@ class TestHarmonizeTextSequences:
             [6, 7, 8, 9]
         ]
         tokenizer.eot_token = 0
-        
+
         result = harmonize_text_sequences(df, tokenizer)
-        
+
         # All sequences should have length 4
         assert all(len(seq) == 4 for seq in result)
 
@@ -225,13 +279,13 @@ class TestHarmonizeTextSequences:
         df = pd.DataFrame({
             "text": ["hello", "world"]
         })
-        
+
         tokenizer = Mock()
         tokenizer.encode.side_effect = [[1, 2], [3, 4]]
         tokenizer.eot_token = 0
-        
+
         result = harmonize_text_sequences(df, tokenizer, sequence_length=5)
-        
+
         assert all(len(seq) == 5 for seq in result)
 
     def test_harmonize_padding(self) -> None:
@@ -239,13 +293,13 @@ class TestHarmonizeTextSequences:
         df = pd.DataFrame({
             "text": ["short", "longer text"]
         })
-        
+
         tokenizer = Mock()
         tokenizer.encode.side_effect = [[1], [2, 3]]
         tokenizer.eot_token = 99
-        
+
         result = harmonize_text_sequences(df, tokenizer)
-        
+
         # Check that shorter sequence is padded
         assert 99 in result[0]
         assert result[0].count(99) > result[1].count(99)
@@ -256,12 +310,12 @@ class TestHarmonizeTextSequences:
             "content": ["test1", "test2"],
             "other": ["x", "y"]
         })
-        
+
         tokenizer = Mock()
         tokenizer.encode.side_effect = [[1], [2, 3]]
         tokenizer.eot_token = 0
-        
+
         result = harmonize_text_sequences(df, tokenizer, text_col="content")
-        
+
         # Should process "content" column
         assert len(result) == 2
