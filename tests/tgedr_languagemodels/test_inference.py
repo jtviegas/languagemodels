@@ -23,6 +23,21 @@ class DummyModel(nn.Module):
         return logits
 
 
+class EosModel(nn.Module):
+    """Model that forces EOS token at each step."""
+
+    def __init__(self, vocab_size: int, eos_id: int) -> None:
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.eos_id = eos_id
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, seq_len = x.shape
+        logits = torch.zeros(batch_size, seq_len, self.vocab_size)
+        logits[:, :, self.eos_id] = 100.0
+        return logits
+
+
 class TestGenerate:
     """Test suite for the generate function."""
 
@@ -192,3 +207,20 @@ class TestGenerate:
         
         assert result.shape[0] == 1
         assert result.shape[1] == 3 + 5
+
+    def test_generate_breaks_early_on_eos(self) -> None:
+        """Generation should stop before appending when EOS is predicted."""
+        eos_id = 2
+        model = EosModel(vocab_size=10, eos_id=eos_id)
+        idx = torch.tensor([[1, 4, 5]])
+
+        result = generate(
+            model,
+            idx,
+            max_new_tokens=5,
+            context_size=10,
+            temperature=0.0,
+            eos_id=eos_id,
+        )
+
+        assert torch.equal(result, idx)

@@ -1,5 +1,6 @@
 """Unit tests for the GPT-2 model module."""
 
+import numpy as np
 import pytest
 import torch
 from tgedr_languagemodels.gpt2.model import GPT2Model
@@ -205,3 +206,97 @@ class TestGPT2Model:
         
         # Model is constructed with bias=False for output layer
         assert model.out_head.bias is None
+
+    def _build_weight_params_from_model(self, model: GPT2Model) -> dict:
+        """Build a shape-compatible params dict for load_weights."""
+        blocks = []
+        for block in model.trf_blocks:
+            emb_dim = block.att.W_query.weight.shape[0]
+            ff_in = block.ff.layers[0].weight.shape[1]
+            ff_out = block.ff.layers[0].weight.shape[0]
+
+            blocks.append(
+                {
+                    "attn": {
+                        "c_attn": {
+                            "w": np.random.randn(emb_dim, 3 * emb_dim).astype(np.float32),
+                            "b": np.random.randn(3 * emb_dim).astype(np.float32),
+                        },
+                        "c_proj": {
+                            "w": np.random.randn(emb_dim, emb_dim).astype(np.float32),
+                            "b": np.random.randn(emb_dim).astype(np.float32),
+                        },
+                    },
+                    "mlp": {
+                        "c_fc": {
+                            "w": np.random.randn(ff_in, ff_out).astype(np.float32),
+                            "b": np.random.randn(ff_out).astype(np.float32),
+                        },
+                        "c_proj": {
+                            "w": np.random.randn(ff_out, ff_in).astype(np.float32),
+                            "b": np.random.randn(ff_in).astype(np.float32),
+                        },
+                    },
+                    "ln_1": {
+                        "g": np.random.randn(emb_dim).astype(np.float32),
+                        "b": np.random.randn(emb_dim).astype(np.float32),
+                    },
+                    "ln_2": {
+                        "g": np.random.randn(emb_dim).astype(np.float32),
+                        "b": np.random.randn(emb_dim).astype(np.float32),
+                    },
+                }
+            )
+
+        return {
+            "wpe": np.random.randn(*model.pos_emb.weight.shape).astype(np.float32),
+            "wte": np.random.randn(*model.tok_emb.weight.shape).astype(np.float32),
+            "g": np.random.randn(*model.final_norm.scale.shape).astype(np.float32),
+            "b": np.random.randn(*model.final_norm.shift.shape).astype(np.float32),
+            "blocks": blocks,
+        }
+
+    def test_assign_shape_mismatch_raises_value_error(self) -> None:
+        """Model-level assign should reject mismatched shapes."""
+        with pytest.raises(ValueError):
+            GPT2Model.assign(torch.zeros(2, 3), np.zeros((2, 4), dtype=np.float32))
+
+    def test_load_weights_populates_parameters(self) -> None:
+        """load_weights should run end-to-end with compatible params."""
+        cfg = BaseModelConfig(
+            vocabulary_size=32,
+            embeddings_dimension=8,
+            context_length=8,
+            n_layers=1,
+            drop_rate=0.0,
+            stride=1,
+            n_heads=2,
+            qkv_bias=True,
+        )
+        model = GPT2Model(cfg)
+        params = self._build_weight_params_from_model(model)
+
+        model.load_weights(params)
+
+        assert model.pos_emb.weight.shape == (cfg.context_length, cfg.embeddings_dimension)
+        assert model.tok_emb.weight.shape == (cfg.vocabulary_size, cfg.embeddings_dimension)
+        assert model.out_head.weight.shape == (cfg.vocabulary_size, cfg.embeddings_dimension)
+
+    def test_load_weights_raises_for_incompatible_shapes(self) -> None:
+        """load_weights should fail when essential shapes are incompatible."""
+        cfg = BaseModelConfig(
+            vocabulary_size=32,
+            embeddings_dimension=8,
+            context_length=8,
+            n_layers=1,
+            drop_rate=0.0,
+            stride=1,
+            n_heads=2,
+            qkv_bias=True,
+        )
+        model = GPT2Model(cfg)
+        params = self._build_weight_params_from_model(model)
+        params["wpe"] = np.random.randn(4, 8).astype(np.float32)
+
+        with pytest.raises(ValueError):
+            model.load_weights(params)
