@@ -6,16 +6,18 @@ from torch import nn
 import numpy as np
 from torch.utils.data import DataLoader
 
+from tgedr_languagemodels.classifier.gpt2.configuration import ClassifierConfiguration
 from tgedr_languagemodels.configuration import BaseClassifierConfig
 from tgedr_languagemodels.evaluations import CrossEntropyModelEvaluatorMixin
 from tgedr_languagemodels.gpt2.model import GPT2Model
+from transformers import PreTrainedModel, PretrainedConfig
 from tgedr_languagemodels.layers.blocks import TransformerBlock
 from tgedr_languagemodels.layers.normalization import LayerNormalization
 
 logger = logging.getLogger(__name__)
 
 
-class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
+class GPT2Classifier(CrossEntropyModelEvaluatorMixin, PreTrainedModel):
     """GPT-2 based classifier for text classification tasks.
 
     This class extends the GPT2Model to add a classification head for predicting
@@ -38,12 +40,12 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
         Output linear layer for classification.
     """
 
-    def __init__(self, cfg: BaseClassifierConfig) -> None:
+    def __init__(self, cfg: ClassifierConfiguration) -> None:
         """Initialize GPT-2 model layers from the given configuration.
 
         Parameters
         ----------
-        cfg : BaseModelConfig
+        cfg : ClassifierConfiguration
             Model configuration containing vocabulary size, context length,
             embedding dimension, dropout rate, and number of transformer layers.
         """
@@ -58,6 +60,83 @@ class GPT2Classifier(CrossEntropyModelEvaluatorMixin, GPT2Model):
 
         self.final_norm = LayerNormalization(cfg.embeddings_dimension)
         self.out_head = nn.Linear(cfg.embeddings_dimension, cfg.n_classes, bias=False)
+
+    def calculate_batch_loss(
+        self, input_batch: torch.Tensor, target_batch: torch.Tensor, device: torch.device
+    ) -> torch.Tensor:
+        """Calculate cross-entropy loss for a batch of inputs and targets.
+
+        Parameters
+        ----------
+        input_batch : torch.Tensor
+            The input tensor batch.
+        target_batch : torch.Tensor
+            The target tensor batch.
+        device : torch.device
+            The device to run the model on.
+
+        Returns
+        -------
+        torch.Tensor
+            The cross-entropy loss for the batch.
+        """
+        logger.debug(f"[calculate_batch_loss|in] ({input_batch}, {target_batch}, {device})")
+        input_batch = input_batch.to(device)
+        target_batch = target_batch.to(device)
+        logits = self(input_batch)[:, -1, :]  # Get the logits for the last time step
+        loss = torch.nn.functional.cross_entropy(logits, target_batch)
+        logger.debug(f"[calculate_batch_loss|out] => {loss}")
+        return loss
+
+    def forward(self, in_idx: torch.Tensor) -> dict:
+        """Compute logits for the given input token indices.
+
+        Parameters
+        ----------
+        in_idx : torch.Tensor
+            Integer tensor of shape (batch_size, seq_len) with token indices.
+
+        Returns
+        -------
+        dict
+            Dictionary containing logits tensor of shape (batch_size, seq_len, n_classes).
+        """
+        batch_size, seq_len = in_idx.shape
+        tok_embeds = self.tok_emb(in_idx)
+        # relational positional embedding layer for sequence length up to context_length,
+        # with embedding dimension emb_dim
+        pos_embeds = self.pos_emb(torch.arange(seq_len, device=in_idx.device))
+        x = tok_embeds + pos_embeds
+        x = self.drop_emb(x)
+        x = self.trf_blocks(x)
+        x = self.final_norm(x)
+        logits = self.out_head(x)
+        result = {"logits": logits}
+        return result
+
+    def _assign(self, left, right) -> torch.nn.Parameter:
+        """Validate shapes and return right as a new Parameter with the same shape as left.
+
+        Parameters
+        ----------
+        left : torch.Tensor
+            Reference tensor whose shape must match right.
+        right : array-like
+            Source data to wrap as a parameter.
+
+        Returns
+        -------
+        torch.nn.Parameter
+            Parameter wrapping the values of right.
+
+        Raises
+        ------
+        ValueError
+            If left and right have different shapes.
+        """
+        if left.shape != right.shape:
+            raise ValueError(f"Shape mismatch. Left: {left.shape}, Right: {right.shape}")  # noqa: EM102, TRY003
+        return torch.nn.Parameter(torch.tensor(right))
 
     def _load_weights(self, params: dict) -> None:
         """Load pretrained weights into the model from a parameters dictionary.
