@@ -259,7 +259,7 @@ class TestGPT2Model:
     def test_assign_shape_mismatch_raises_value_error(self) -> None:
         """Model-level assign should reject mismatched shapes."""
         with pytest.raises(ValueError):
-            GPT2Model.assign(torch.zeros(2, 3), np.zeros((2, 4), dtype=np.float32))
+            GPT2Model._assign(torch.zeros(2, 3), np.zeros((2, 4), dtype=np.float32))
 
     def test_load_weights_populates_parameters(self) -> None:
         """load_weights should run end-to-end with compatible params."""

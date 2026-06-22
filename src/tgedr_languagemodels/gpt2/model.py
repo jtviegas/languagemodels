@@ -79,7 +79,7 @@ class GPT2Model(nn.Module):
         return logits
 
     @staticmethod
-    def assign(left, right) -> torch.nn.Parameter:
+    def _assign(left, right) -> torch.nn.Parameter:
         """Validate shapes and return right as a new Parameter with the same shape as left.
 
         Parameters
@@ -114,57 +114,57 @@ class GPT2Model(nn.Module):
         """
         # 1 Sets the model's positional and token embedding weights to those specified in params.
 
-        self.pos_emb.weight = self.assign(self.pos_emb.weight, params["wpe"])
-        self.tok_emb.weight = self.assign(self.tok_emb.weight, params["wte"])
+        self.pos_emb.weight = self._assign(self.pos_emb.weight, params["wpe"])
+        self.tok_emb.weight = self._assign(self.tok_emb.weight, params["wte"])
 
         for b in range(len(params["blocks"])):  # 2 Iterates over each transformer block in the model
             # 3 The np.split function is used to divide the attention and bias weights
             # into three equal parts for the query, key, and value components.
             q_w, k_w, v_w = np.split((params["blocks"][b]["attn"]["c_attn"])["w"], 3, axis=-1)
-            self.trf_blocks[b].att.W_query.weight = self.assign(self.trf_blocks[b].att.W_query.weight, q_w.T)
-            self.trf_blocks[b].att.W_key.weight = self.assign(self.trf_blocks[b].att.W_key.weight, k_w.T)
-            self.trf_blocks[b].att.W_value.weight = self.assign(self.trf_blocks[b].att.W_value.weight, v_w.T)
+            self.trf_blocks[b].att.W_query.weight = self._assign(self.trf_blocks[b].att.W_query.weight, q_w.T)
+            self.trf_blocks[b].att.W_key.weight = self._assign(self.trf_blocks[b].att.W_key.weight, k_w.T)
+            self.trf_blocks[b].att.W_value.weight = self._assign(self.trf_blocks[b].att.W_value.weight, v_w.T)
 
             q_b, k_b, v_b = np.split((params["blocks"][b]["attn"]["c_attn"])["b"], 3, axis=-1)
-            self.trf_blocks[b].att.W_query.bias = self.assign(self.trf_blocks[b].att.W_query.bias, q_b)
-            self.trf_blocks[b].att.W_key.bias = self.assign(self.trf_blocks[b].att.W_key.bias, k_b)
-            self.trf_blocks[b].att.W_value.bias = self.assign(self.trf_blocks[b].att.W_value.bias, v_b)
+            self.trf_blocks[b].att.W_query.bias = self._assign(self.trf_blocks[b].att.W_query.bias, q_b)
+            self.trf_blocks[b].att.W_key.bias = self._assign(self.trf_blocks[b].att.W_key.bias, k_b)
+            self.trf_blocks[b].att.W_value.bias = self._assign(self.trf_blocks[b].att.W_value.bias, v_b)
 
-            self.trf_blocks[b].att.out_projection.weight = self.assign(
+            self.trf_blocks[b].att.out_projection.weight = self._assign(
                 self.trf_blocks[b].att.out_projection.weight, params["blocks"][b]["attn"]["c_proj"]["w"].T
             )
-            self.trf_blocks[b].att.out_projection.bias = self.assign(
+            self.trf_blocks[b].att.out_projection.bias = self._assign(
                 self.trf_blocks[b].att.out_projection.bias, params["blocks"][b]["attn"]["c_proj"]["b"]
             )
 
-            self.trf_blocks[b].ff.layers[0].weight = self.assign(
+            self.trf_blocks[b].ff.layers[0].weight = self._assign(
                 self.trf_blocks[b].ff.layers[0].weight, params["blocks"][b]["mlp"]["c_fc"]["w"].T
             )
-            self.trf_blocks[b].ff.layers[0].bias = self.assign(
+            self.trf_blocks[b].ff.layers[0].bias = self._assign(
                 self.trf_blocks[b].ff.layers[0].bias, params["blocks"][b]["mlp"]["c_fc"]["b"]
             )
-            self.trf_blocks[b].ff.layers[2].weight = self.assign(
+            self.trf_blocks[b].ff.layers[2].weight = self._assign(
                 self.trf_blocks[b].ff.layers[2].weight, params["blocks"][b]["mlp"]["c_proj"]["w"].T
             )
-            self.trf_blocks[b].ff.layers[2].bias = self.assign(
+            self.trf_blocks[b].ff.layers[2].bias = self._assign(
                 self.trf_blocks[b].ff.layers[2].bias, params["blocks"][b]["mlp"]["c_proj"]["b"]
             )
 
-            self.trf_blocks[b].norm1.scale = self.assign(
+            self.trf_blocks[b].norm1.scale = self._assign(
                 self.trf_blocks[b].norm1.scale, params["blocks"][b]["ln_1"]["g"]
             )
-            self.trf_blocks[b].norm1.shift = self.assign(
+            self.trf_blocks[b].norm1.shift = self._assign(
                 self.trf_blocks[b].norm1.shift, params["blocks"][b]["ln_1"]["b"]
             )
-            self.trf_blocks[b].norm2.scale = self.assign(
+            self.trf_blocks[b].norm2.scale = self._assign(
                 self.trf_blocks[b].norm2.scale, params["blocks"][b]["ln_2"]["g"]
             )
-            self.trf_blocks[b].norm2.shift = self.assign(
+            self.trf_blocks[b].norm2.shift = self._assign(
                 self.trf_blocks[b].norm2.shift, params["blocks"][b]["ln_2"]["b"]
             )
 
-        self.final_norm.scale = self.assign(self.final_norm.scale, params["g"])
-        self.final_norm.shift = self.assign(self.final_norm.shift, params["b"])
+        self.final_norm.scale = self._assign(self.final_norm.scale, params["g"])
+        self.final_norm.shift = self._assign(self.final_norm.shift, params["b"])
         # 4 The original GPT-2 model by OpenAI reused the token embedding weights in the output layer to reduce the total number
         # of parameters, which is a concept known as weight tying.
-        self.out_head.weight = self.assign(self.out_head.weight, params["wte"])  # 4
+        self.out_head.weight = self._assign(self.out_head.weight, params["wte"])  # 4
