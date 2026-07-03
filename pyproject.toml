@@ -22,6 +22,7 @@ dependencies = [
     "aiohttp>=3.14.0",
     "datasets>=5.0.0",
     "transformers>=5.12.1",
+    "accelerate>=1.14.0",
 ]
 
 [dependency-groups]

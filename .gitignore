@@ -182,3 +182,5 @@ tests-results.xml
 CHANGELOG
 .vscode
 .data/
+unit-tests-results.xml
+experiment_results/
