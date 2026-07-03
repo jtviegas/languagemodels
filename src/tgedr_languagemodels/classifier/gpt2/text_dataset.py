@@ -7,9 +7,10 @@ with automatic tokenization, padding, and truncation.
 import datasets
 import torch
 import pandas as pd
+from torch.utils.data import Dataset as TorchDataset
 
 
-class TextDataset(datasets.Dataset):
+class TextDataset(datasets.Dataset, TorchDataset):
 
     def __init__(
         self,
