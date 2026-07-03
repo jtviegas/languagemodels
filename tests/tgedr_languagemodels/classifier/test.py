@@ -39,7 +39,7 @@ def example_trainer_usage():
         drop_rate=0.1,
         stride=1,
         n_heads=12,
-        n_classes=2,
+        n_classes=3,
     )
 
     # 2. Create Trainer-ready model
@@ -47,11 +47,11 @@ def example_trainer_usage():
 
     # 3. Prepare datasets (example with dummy data)
     # In reality, use your TextDataset/ClassifierDataLoader
-    train_texts = ["sample text 1", "sample text 2"] * 1000
-    train_labels = [0, 1] * 1000
+    train_texts = ["sample text 1", "sample text 2", "sample text 3"] * 100
+    train_labels = [0, 1, 2] * 100
 
-    val_texts = ["validation text 1", "validation text 2"] * 100
-    val_labels = [0, 1] * 100
+    val_texts = ["validation text 1", "validation text 2"] * 20
+    val_labels = [0, 1] * 20
 
     tokenizer = tiktoken.get_encoding("gpt2")
     train_dataset = TextDataset(tokenizer=tokenizer, texts=train_texts, labels=train_labels)
