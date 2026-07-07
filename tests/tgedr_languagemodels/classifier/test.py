@@ -8,6 +8,7 @@ accumulation, mixed precision, and comprehensive logging.
 import torch
 import tiktoken
 import numpy as np
+from importlib.util import find_spec
 
 from tgedr_languagemodels.classifier.gpt2.configuration import ClassifierConfiguration
 from tgedr_languagemodels.classifier.gpt2.text_dataset import TextDataset
@@ -28,8 +29,6 @@ def example_trainer_usage():
     4. Use a proper data collator if needed
     """
 
-    
-
     # 1. Configure the model
     config = ClassifierConfiguration(
         vocabulary_size=50257,
@@ -42,16 +41,17 @@ def example_trainer_usage():
         n_classes=3,
     )
 
-    # 2. Create Trainer-ready model
-    model = GPT2Classifier(config)
+    def model_init():
+        """Create a fresh model instance (required for hyperparameter search)."""
+        return GPT2Classifier(config)
 
     # 3. Prepare datasets (example with dummy data)
     # In reality, use your TextDataset/ClassifierDataLoader
     train_texts = ["sample text 1", "sample text 2", "sample text 3"] * 100
     train_labels = [0, 1, 2] * 100
 
-    val_texts = ["validation text 1", "validation text 2"] * 20
-    val_labels = [0, 1] * 20
+    val_texts = ["validation text 1", "validation text 2", "validation text 3"] * 20
+    val_labels = [0, 1, 2] * 20
 
     tokenizer = tiktoken.get_encoding("gpt2")
     train_dataset = TextDataset(tokenizer=tokenizer, texts=train_texts, labels=train_labels)
@@ -65,31 +65,101 @@ def example_trainer_usage():
         preds = np.argmax(logits[:, -1, :], axis=-1)
         return {"accuracy": float((preds == labels).mean())}
 
-    # 4. Configure training arguments
-    training_args = TrainingArguments(
-        num_train_epochs=3,
-        per_device_train_batch_size=8,
-        learning_rate=3e-5,
-        warmup_steps=100,
-        weight_decay=0.01,
-        gradient_accumulation_steps=1,
-        fp16=torch.cuda.is_available(),  # Mixed precision if CUDA available
-        logging_steps=10,
-        per_device_eval_batch_size=8,
-        eval_steps=50,
-        eval_strategy="steps",
-        save_strategy="steps",
-        save_steps=50,
-        seed=42,
-        remove_unused_columns=False,
+    # 4. Optionally search for better training arguments
+    best_hyperparameters = {}
+    try:
+        if find_spec("optuna") is None:
+            raise ImportError
 
-        output_dir="./experiment_results",
-        logging_dir="./logs",
-    )
+        print("Running automatic hyperparameter search (Optuna backend)...")
+
+        search_args = TrainingArguments(
+            output_dir="./experiment_results_hp_search",
+            logging_dir="./logs",
+            num_train_epochs=2,
+            per_device_train_batch_size=8,
+            per_device_eval_batch_size=16,
+            eval_strategy="epoch",
+            save_strategy="no",
+            learning_rate=3e-4,
+            warmup_ratio=0.05,
+            weight_decay=0.01,
+            fp16=torch.cuda.is_available(),
+            remove_unused_columns=False,
+            report_to="none",
+            seed=42,
+        )
+
+        search_trainer = Trainer(
+            model_init=model_init,
+            args=search_args,
+            train_dataset=train_dataset,
+            eval_dataset=val_dataset,
+            compute_metrics=compute_metrics,
+        )
+
+        best_run = search_trainer.hyperparameter_search(
+            backend="optuna",
+            direction="maximize",
+            n_trials=8,
+            hp_space=lambda trial: {
+                "learning_rate": trial.suggest_float("learning_rate", 1e-5, 5e-4, log=True),
+                "weight_decay": trial.suggest_float("weight_decay", 0.0, 0.1),
+                "num_train_epochs": trial.suggest_int("num_train_epochs", 2, 8),
+                "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [4, 8, 16]),
+                "warmup_ratio": trial.suggest_float("warmup_ratio", 0.0, 0.2),
+            },
+            compute_objective=lambda metrics: metrics["eval_accuracy"],
+        )
+
+        best_hyperparameters = best_run.hyperparameters
+        print(f"Best hyperparameters found: {best_hyperparameters}")
+
+    except ImportError:
+        print("Optuna is not installed. Using default TrainingArguments.")
+
+    training_kwargs = {
+        "output_dir": "./experiment_results",
+        "logging_dir": "./logs",
+        "num_train_epochs": 5,
+        "per_device_train_batch_size": 8,
+        "per_device_eval_batch_size": 16,
+        "learning_rate": 2e-4,
+        "weight_decay": 0.01,
+        "warmup_ratio": 0.1,
+        "gradient_accumulation_steps": 1,
+        "fp16": torch.cuda.is_available(),
+        "eval_strategy": "epoch",
+        "save_strategy": "epoch",
+        "load_best_model_at_end": True,
+        "metric_for_best_model": "accuracy",
+        "greater_is_better": True,
+        "save_total_limit": 2,
+        "logging_strategy": "steps",
+        "logging_steps": 5,
+        "report_to": "none",
+        "seed": 42,
+        "remove_unused_columns": False,
+    }
+
+    for key in [
+        "learning_rate",
+        "weight_decay",
+        "num_train_epochs",
+        "per_device_train_batch_size",
+        "warmup_ratio",
+    ]:
+        if key in best_hyperparameters:
+            training_kwargs[key] = best_hyperparameters[key]
+
+    training_kwargs["num_train_epochs"] = int(training_kwargs["num_train_epochs"])
+    training_kwargs["per_device_train_batch_size"] = int(training_kwargs["per_device_train_batch_size"])
+
+    training_args = TrainingArguments(**training_kwargs)
 
     # 5. Create Trainer
     trainer = Trainer(
-        model=model,
+        model=model_init(),
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
