@@ -93,13 +93,19 @@ reqs(){
 
   uv sync --group dev
   local result="$?"
-  if [ ! "$result" -eq "0" ] ; then err "[reqs] could not install dependencies"; fi
+  [ "$?" -ne "0" ] && err "[reqs|out] could not install dependencies"  && cd "$_pwd" && exit 1
 
+  git xet --version
+  if [ "$?" -ne "0" ]; then
+    info "[reqs] git xet not found, installing it"
+    curl -sSf https://raw.githubusercontent.com/huggingface/xet-core/refs/heads/main/git_xet/install.sh | sh
+    [ "$?" -ne "0" ] && err "[reqs|out] could not install git xet" && cd "$_pwd" && exit 1
+  else
+    info "[reqs|out] git xet already installed"
+  fi
+  
   cd "$_pwd"
-
-  local msg="[reqs|out] => ${result}"
-  [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
-  info "$msg"
+  info "[reqs|out]"
 }
 
 unit_test(){
