@@ -2,12 +2,120 @@
 
 import numpy as np
 import pytest
+import tiktoken
 import torch
+from datasets import Dataset as HFDataset
+from types import SimpleNamespace
 from torch.utils.data import DataLoader, TensorDataset
 
 from tgedr_languagemodels.classifier.gpt2.configuration import ClassifierConfiguration
+import tgedr_languagemodels.classifier.gpt2.hyperparam_search as hyperparam_search_module
+from tgedr_languagemodels.classifier.gpt2.hyperparam_search import HyperParamSearch
 from tgedr_languagemodels.classifier.gpt2.model import GPT2Classifier
+from tgedr_languagemodels.classifier.gpt2.text_dataset import TextDataset
 from transformers.modeling_outputs import SequenceClassifierOutput
+
+
+class TestHyperParamSearch:
+
+    def test_search_raises_if_optuna_is_missing(self, monkeypatch) -> None:
+        monkeypatch.setattr(hyperparam_search_module, "find_spec", lambda _: None)
+
+        hp_search = HyperParamSearch(GPT2Classifier.compute_metrics)
+        model = GPT2Classifier(_cfg())
+
+        tokenizer = tiktoken.get_encoding("gpt2")
+        train_dataset = TextDataset(tokenizer=tokenizer, texts=["sample text 1"], labels=[0], max_length=8)
+        val_dataset = TextDataset(tokenizer=tokenizer, texts=["validation text 1"], labels=[0], max_length=8)
+
+        with pytest.raises(ImportError, match="Optuna is not installed"):
+            hp_search.search(model=model, train_dataset=train_dataset, val_dataset=val_dataset)
+
+    def test_search_uses_same_synthetic_datasets_and_returns_best_hyperparameters(self, monkeypatch) -> None:
+        monkeypatch.setattr(hyperparam_search_module, "find_spec", lambda name: object() if name == "optuna" else None)
+
+        captured = {}
+
+        class FakeTrial:
+
+            @staticmethod
+            def suggest_float(name, low, high, log=False):
+                values = {
+                    "learning_rate": 2e-4,
+                    "weight_decay": 0.01,
+                    "warmup_steps": 0.1,
+                }
+                _ = (low, high, log)
+                return values[name]
+
+            @staticmethod
+            def suggest_int(name, low, high):
+                _ = (low, high)
+                return 4
+
+            @staticmethod
+            def suggest_categorical(name, choices):
+                _ = choices
+                return 8 if name == "per_device_train_batch_size" else choices[0]
+
+        class FakeTrainer:
+
+            def __init__(self, model_init, args, train_dataset, eval_dataset, compute_metrics):
+                captured["model_init"] = model_init
+                captured["args"] = args
+                captured["train_dataset"] = train_dataset
+                captured["eval_dataset"] = eval_dataset
+                captured["compute_metrics"] = compute_metrics
+
+            def hyperparameter_search(self, backend, direction, n_trials, hp_space, compute_objective):
+                assert backend == "optuna"
+                assert direction == "maximize"
+                assert n_trials == 3
+
+                trial_params = hp_space(FakeTrial())
+                assert set(trial_params.keys()) == {
+                    "learning_rate",
+                    "weight_decay",
+                    "num_train_epochs",
+                    "per_device_train_batch_size",
+                    "warmup_steps",
+                }
+
+                assert compute_objective({"eval_accuracy": 0.75}) == 0.75
+                return SimpleNamespace(hyperparameters=trial_params)
+
+        monkeypatch.setattr(hyperparam_search_module, "Trainer", FakeTrainer)
+
+        hp_search = HyperParamSearch(GPT2Classifier.compute_metrics)
+        model = GPT2Classifier(_cfg())
+
+        # Use the same synthetic dataset pattern from test copy.py.
+        train_texts = ["sample text 1", "sample text 2", "sample text 3"] * 100
+        train_labels = [0, 1, 2] * 100
+        val_texts = ["validation text 1", "validation text 2", "validation text 3"] * 20
+        val_labels = [0, 1, 2] * 20
+
+        tokenizer = tiktoken.get_encoding("gpt2")
+        train_dataset = TextDataset(tokenizer=tokenizer, texts=train_texts, labels=train_labels)
+        val_dataset = TextDataset(tokenizer=tokenizer, texts=val_texts, labels=val_labels)
+
+        best_hyperparameters = hp_search.search(
+            model=model,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            trials=3,
+        )
+
+        assert isinstance(best_hyperparameters, dict)
+        assert best_hyperparameters["learning_rate"] == 2e-4
+        assert best_hyperparameters["weight_decay"] == 0.01
+        assert best_hyperparameters["num_train_epochs"] == 4
+        assert best_hyperparameters["per_device_train_batch_size"] == 8
+        assert best_hyperparameters["warmup_steps"] == 0.1
+        assert captured["model_init"]() is model
+        assert captured["compute_metrics"] is GPT2Classifier.compute_metrics
+        assert len(captured["train_dataset"]) == 300
+        assert len(captured["eval_dataset"]) == 60
 
 
 def _cfg(**overrides) -> ClassifierConfiguration:
@@ -112,7 +220,7 @@ class TestGPT2ClassifierCalculateBatchLoss:
         model = GPT2Classifier(cfg)
         inputs = torch.randint(0, cfg.vocabulary_size, (4, 5))
         labels = torch.randint(0, cfg.n_classes, (4,))
-        loss = model.calculate_batch_loss(inputs, labels)
+        loss = model._calculate_batch_loss(inputs, labels)
         assert loss.ndim == 0
 
     def test_loss_is_non_negative(self) -> None:
@@ -120,7 +228,7 @@ class TestGPT2ClassifierCalculateBatchLoss:
         model = GPT2Classifier(cfg)
         inputs = torch.randint(0, cfg.vocabulary_size, (4, 5))
         labels = torch.randint(0, cfg.n_classes, (4,))
-        loss = model.calculate_batch_loss(inputs, labels)
+        loss = model._calculate_batch_loss(inputs, labels)
         assert loss.item() >= 0.0
 
     def test_accepts_device_kwarg(self) -> None:
@@ -128,7 +236,7 @@ class TestGPT2ClassifierCalculateBatchLoss:
         model = GPT2Classifier(cfg)
         inputs = torch.randint(0, cfg.vocabulary_size, (2, 5))
         labels = torch.randint(0, cfg.n_classes, (2,))
-        loss = model.calculate_batch_loss(inputs, labels, device=torch.device("cpu"))
+        loss = model._calculate_batch_loss(inputs, labels, device=torch.device("cpu"))
         assert loss.ndim == 0
 
     def test_consistent_with_forward_loss(self) -> None:
@@ -140,7 +248,7 @@ class TestGPT2ClassifierCalculateBatchLoss:
         labels = torch.randint(0, cfg.n_classes, (2,))
         with torch.no_grad():
             fwd_loss = model(input_ids=inputs, labels=labels).loss
-            batch_loss = model.calculate_batch_loss(inputs, labels)
+            batch_loss = model._calculate_batch_loss(inputs, labels)
         assert torch.isclose(fwd_loss, batch_loss, atol=1e-5)
 
 
@@ -231,3 +339,28 @@ class TestGPT2ClassifierPretrain:
         model.pretrain(self._make_params(cfg))
         for p in model.final_norm.parameters():
             assert p.requires_grad
+
+
+class TestTextDatasetHuggingFaceCompliance:
+
+    def test_is_hugging_face_dataset(self) -> None:
+        tokenizer = tiktoken.get_encoding("gpt2")
+        dataset = TextDataset(tokenizer=tokenizer, texts=["a", "b"], labels=[0, 1], max_length=4)
+        assert isinstance(dataset, HFDataset)
+
+    def test_repr_does_not_raise_and_contains_expected_fields(self) -> None:
+        tokenizer = tiktoken.get_encoding("gpt2")
+        dataset = TextDataset(tokenizer=tokenizer, texts=["hello"], labels=[1], max_length=4)
+        representation = repr(dataset)
+        assert "features" in representation
+        assert "num_rows" in representation
+
+    def test_select_and_map_work(self) -> None:
+        tokenizer = tiktoken.get_encoding("gpt2")
+        dataset = TextDataset(tokenizer=tokenizer, texts=["x", "y", "z"], labels=[0, 1, 0], max_length=4)
+
+        selected = dataset.select([1, 2])
+        assert selected.num_rows == 2
+
+        mapped = dataset.map(lambda row: row)
+        assert mapped.num_rows == 3

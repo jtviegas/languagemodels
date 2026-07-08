@@ -6,7 +6,7 @@ from torch import nn
 import numpy as np
 
 from tgedr_languagemodels.classifier.gpt2.configuration import ClassifierConfiguration
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, Trainer, TrainingArguments
 from transformers.modeling_outputs import SequenceClassifierOutput
 from tgedr_languagemodels.layers.blocks import TransformerBlock
 from tgedr_languagemodels.layers.normalization import LayerNormalization
@@ -69,47 +69,23 @@ class GPT2Classifier(PreTrainedModel):
         """
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def _compute_logits(self, input_ids: torch.Tensor) -> torch.Tensor:
-        """Compute classifier logits for a batch of token ids."""
-        _, seq_len = input_ids.shape
-        input_ids = input_ids.to(self.device)
-        tok_embeds = self.tok_emb(input_ids)
-        pos_embeds = self.pos_emb(torch.arange(seq_len, device=self.device))
-        x = tok_embeds + pos_embeds
-        x = self.drop_emb(x)
-        x = self.trf_blocks(x)
-        x = self.final_norm(x)
-        return self.out_head(x)
+    @staticmethod
+    def compute_metrics(eval_pred) -> dict[str, float]:
+        """Compute accuracy using classifier logits from the last token."""
+        logits, labels = eval_pred
 
-    def calculate_batch_loss(
-        self,
-        input_batch: torch.Tensor,
-        target_batch: torch.Tensor,
-        device: torch.device | None = None,
-    ) -> torch.Tensor:
-        """Calculate cross-entropy loss for a batch of inputs and targets.
+        if isinstance(logits, tuple):
+            logits = logits[0]
 
-        Parameters
-        ----------
-        input_batch : torch.Tensor
-            The input tensor batch.
-        target_batch : torch.Tensor
-            The target tensor batch.
+        if isinstance(logits, torch.Tensor):
+            logits = logits.detach().cpu().numpy()
 
-        Returns
-        -------
-        torch.Tensor
-            The cross-entropy loss for the batch.
-        """
-        logger.debug(f"[calculate_batch_loss|in] ({input_batch}, {target_batch})")
-        target_device = self.device if device is None else device
-        input_batch = input_batch.to(target_device)
-        target_batch = target_batch.to(target_device)
-        logits = self._compute_logits(input_batch)[:, -1, :]
-        loss = torch.nn.functional.cross_entropy(logits, target_batch)
-        logger.debug(f"[calculate_batch_loss|out] => {loss}")
-        return loss
+        if isinstance(labels, torch.Tensor):
+            labels = labels.detach().cpu().numpy()
 
+        preds = np.argmax(logits[:, -1, :], axis=-1)
+        return {"accuracy": float((preds == labels).mean())}
+    
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor | None = None,
         labels: torch.Tensor | None = None,
         **kwargs,
@@ -141,6 +117,91 @@ class GPT2Classifier(PreTrainedModel):
             loss = torch.nn.functional.cross_entropy(logits[:, -1, :], labels)
 
         return SequenceClassifierOutput(loss=loss, logits=logits)
+
+    def pretrain(self, weights: dict) -> None:
+        """Prepare the model for fine-tuning by loading pretrained weights.
+
+        Parameters
+        ----------
+        weights : dict
+            Dictionary containing pretrained weights to load into the model.
+        """
+        self._load_weights(weights)
+        for param in self.parameters():
+            param.requires_grad = False
+        # fine-tuning additional layers can noticeably improve the predictive performance of the model
+        # We also configure the last transformer block and the final LayerNorm module,
+        # which connects this block to the output layer, to be trainable
+        for param in self.trf_blocks[-1].parameters():
+            param.requires_grad = True
+        for param in self.final_norm.parameters():
+            param.requires_grad = True
+        for param in self.out_head.parameters():
+            param.requires_grad = True
+
+    def infer(self, in_idx: torch.Tensor) -> torch.Tensor:
+        """Perform a forward pass through the model to obtain class logits.
+
+        Parameters
+        ----------
+        in_idx : torch.Tensor
+            Input tensor of shape (batch_size, sequence_length) containing token indices.
+
+        Returns
+        -------
+        torch.Tensor
+            Predicted class indices.
+        """
+        in_idx = in_idx.to(self.device)
+        was_training = self.training
+        if was_training:
+            self.eval()
+        with torch.no_grad():  # Models inference without gradient tracking
+            logits = self._compute_logits(in_idx)[:, -1, :]
+        if was_training:
+            self.train()
+        return torch.argmax(logits, dim=-1)
+      
+    def _compute_logits(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Compute classifier logits for a batch of token ids."""
+        _, seq_len = input_ids.shape
+        input_ids = input_ids.to(self.device)
+        tok_embeds = self.tok_emb(input_ids)
+        pos_embeds = self.pos_emb(torch.arange(seq_len, device=self.device))
+        x = tok_embeds + pos_embeds
+        x = self.drop_emb(x)
+        x = self.trf_blocks(x)
+        x = self.final_norm(x)
+        return self.out_head(x)
+
+    def _calculate_batch_loss(
+        self,
+        input_batch: torch.Tensor,
+        target_batch: torch.Tensor,
+        device: torch.device | None = None,
+    ) -> torch.Tensor:
+        """Calculate cross-entropy loss for a batch of inputs and targets.
+
+        Parameters
+        ----------
+        input_batch : torch.Tensor
+            The input tensor batch.
+        target_batch : torch.Tensor
+            The target tensor batch.
+
+        Returns
+        -------
+        torch.Tensor
+            The cross-entropy loss for the batch.
+        """
+        logger.debug(f"[calculate_batch_loss|in] ({input_batch}, {target_batch})")
+        target_device = self.device if device is None else device
+        input_batch = input_batch.to(target_device)
+        target_batch = target_batch.to(target_device)
+        logits = self._compute_logits(input_batch)[:, -1, :]
+        loss = torch.nn.functional.cross_entropy(logits, target_batch)
+        logger.debug(f"[calculate_batch_loss|out] => {loss}")
+        return loss
 
     def _assign(self, left, right) -> torch.nn.Parameter:
         """Validate shapes and return right as a new Parameter with the same shape as left.
@@ -229,46 +290,4 @@ class GPT2Classifier(PreTrainedModel):
         self.final_norm.scale = self._assign(self.final_norm.scale, params["g"])
         self.final_norm.shift = self._assign(self.final_norm.shift, params["b"])
 
-    def pretrain(self, weights: dict) -> None:
-        """Prepare the model for fine-tuning by loading pretrained weights.
-
-        Parameters
-        ----------
-        weights : dict
-            Dictionary containing pretrained weights to load into the model.
-        """
-        self._load_weights(weights)
-        for param in self.parameters():
-            param.requires_grad = False
-        # fine-tuning additional layers can noticeably improve the predictive performance of the model
-        # We also configure the last transformer block and the final LayerNorm module,
-        # which connects this block to the output layer, to be trainable
-        for param in self.trf_blocks[-1].parameters():
-            param.requires_grad = True
-        for param in self.final_norm.parameters():
-            param.requires_grad = True
-        for param in self.out_head.parameters():
-            param.requires_grad = True
-
-    def infer(self, in_idx: torch.Tensor) -> torch.Tensor:
-        """Perform a forward pass through the model to obtain class logits.
-
-        Parameters
-        ----------
-        in_idx : torch.Tensor
-            Input tensor of shape (batch_size, sequence_length) containing token indices.
-
-        Returns
-        -------
-        torch.Tensor
-            Predicted class indices.
-        """
-        in_idx = in_idx.to(self.device)
-        was_training = self.training
-        if was_training:
-            self.eval()
-        with torch.no_grad():  # Models inference without gradient tracking
-            logits = self._compute_logits(in_idx)[:, -1, :]
-        if was_training:
-            self.train()
-        return torch.argmax(logits, dim=-1)
+    
