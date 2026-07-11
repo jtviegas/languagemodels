@@ -184,3 +184,5 @@ CHANGELOG
 .data/
 unit-tests-results.xml
 experiment_results/
+.deprecated/
+

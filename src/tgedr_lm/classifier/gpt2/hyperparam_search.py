@@ -11,7 +11,7 @@ os.environ["TENSORBOARD_LOGGING_DIR"] = "./logs"
 logger = logging.getLogger(__name__)
 
 class HyperParamSearch:
-  
+
   def __init__(self, compute_metrics_func, train_args: TrainingArguments = None):
     """Initialize the hyperparameter search class.
 
@@ -24,7 +24,7 @@ class HyperParamSearch:
     self.train_args = train_args or self._get_default_arguments()
     self._compute_metrics = compute_metrics_func
 
-  
+
   def _get_default_arguments(self) -> TrainingArguments:
     """Get default training arguments for hyperparameter search."""
     return TrainingArguments(
@@ -47,7 +47,7 @@ class HyperParamSearch:
   def search(self, model, train_dataset, val_dataset, trials: int = 8):
     logger.info(f"[search|in] ({model}, {train_dataset}, {val_dataset}, {trials})")
     best_hyperparameters = {}
-    
+
     if find_spec("optuna") is None:
         raise ImportError("Optuna is not installed. Please install it to use hyperparameter search.")
 

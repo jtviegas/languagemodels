@@ -1,5 +1,5 @@
 [project]
-name = "tgedr-languagemodels"
+name = "tgedr-lm"
 version = "0.0.1"
 description = "this is a template for a python package"
 authors = [

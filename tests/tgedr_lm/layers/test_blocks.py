@@ -2,8 +2,8 @@
 
 import pytest
 import torch
-from tgedr_languagemodels.layers.blocks import TransformerBlock
-from tgedr_languagemodels.configuration import BaseModelConfig
+from tgedr_lm.layers.blocks import TransformerBlock
+from tgedr_lm.configuration import BaseModelConfig
 
 
 class TestTransformerBlock:
@@ -113,7 +113,7 @@ class TestTransformerBlock:
         cfg = self.get_test_config()
         block = TransformerBlock(cfg)
         
-        from tgedr_languagemodels.layers.attention import MultiHeadAttention
+        from tgedr_lm.layers.attention import MultiHeadAttention
         assert isinstance(block.att, MultiHeadAttention)
 
     def test_block_contains_feedforward(self) -> None:
@@ -121,7 +121,7 @@ class TestTransformerBlock:
         cfg = self.get_test_config()
         block = TransformerBlock(cfg)
         
-        from tgedr_languagemodels.layers.feed_forward import FeedForward
+        from tgedr_lm.layers.feed_forward import FeedForward
         assert isinstance(block.ff, FeedForward)
 
     def test_block_contains_layer_norms(self) -> None:
@@ -129,7 +129,7 @@ class TestTransformerBlock:
         cfg = self.get_test_config()
         block = TransformerBlock(cfg)
         
-        from tgedr_languagemodels.layers.normalization import LayerNormalization
+        from tgedr_lm.layers.normalization import LayerNormalization
         assert isinstance(block.norm1, LayerNormalization)
         assert isinstance(block.norm2, LayerNormalization)
 

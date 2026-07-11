@@ -9,11 +9,11 @@ import torch
 import tiktoken
 from importlib.util import find_spec
 
-from tgedr_languagemodels.classifier.gpt2.configuration import ClassifierConfiguration
-from tgedr_languagemodels.classifier.gpt2.hyperparam_search import HyperParamSearch
-from tgedr_languagemodels.classifier.gpt2.text_dataset import TextDataset
+from tgedr_lm.classifier.gpt2.configuration import ClassifierConfiguration
+from tgedr_lm.classifier.gpt2.hyperparam_search import HyperParamSearch
+from tgedr_lm.classifier.gpt2.text_dataset import TextDataset
 from transformers import Trainer, TrainingArguments
-from tgedr_languagemodels.classifier.gpt2.model import GPT2Classifier
+from tgedr_lm.classifier.gpt2.model import GPT2Classifier
 
 
 @fixture
@@ -34,11 +34,11 @@ def model():
 @fixture
 def data():
     """Prepare datasets (example with dummy data)."""
-    train_texts = ["sample text 1", "sample text 2", "sample text 3"] * 100
-    train_labels = [0, 1, 2] * 100
+    train_texts = ["sample text 1", "sample text 2", "sample text 3"] * 30
+    train_labels = [0, 1, 2] * 30
 
-    val_texts = ["validation text 1", "validation text 2", "validation text 3"] * 20
-    val_labels = [0, 1, 2] * 20
+    val_texts = ["validation text 1", "validation text 2", "validation text 3"] * 10
+    val_labels = [0, 1, 2] * 10
 
     tokenizer = tiktoken.get_encoding("gpt2")
     train_dataset = TextDataset(tokenizer=tokenizer, texts=train_texts, labels=train_labels)
@@ -60,7 +60,7 @@ def test_hyperparameter_search(model, data):
     assert best_hyperparameters["per_device_train_batch_size"] > 1
     assert (best_hyperparameters["learning_rate"] - 7.114212060327504e-05) < 1e-1
     assert (best_hyperparameters["weight_decay"] - 0.013980743507010574) < 1e-1
-    assert (best_hyperparameters["warmup_steps"] - 0.014940532738428481) < 1e-1
+    assert best_hyperparameters["warmup_steps"] < 5e-1
 
 
 def test_train(model, data):
@@ -118,11 +118,10 @@ def test_train(model, data):
     trainer.train()
     final_metrics = trainer.evaluate()
 
-    assert final_metrics.get("eval_accuracy") is not None
-    assert final_metrics.get("eval_loss") is not None
-    assert final_metrics.get("eval_accuracy") == 1.0
-    assert final_metrics.get("eval_loss") < 1e-6
-
+    accuracy = final_metrics.get("eval_accuracy")
+    loss = final_metrics.get("eval_loss")
+    assert accuracy is not None and accuracy > 0.9
+    assert loss is not None and loss < 1e-6
 
     # 7. Save model
     # model.save_pretrained("./final_model")

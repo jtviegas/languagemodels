@@ -2,8 +2,8 @@
 
 import pytest
 import torch
-from tgedr_languagemodels.layers.feed_forward import FeedForward
-from tgedr_languagemodels.configuration import BaseModelConfig
+from tgedr_lm.layers.feed_forward import FeedForward
+from tgedr_lm.configuration import BaseModelConfig
 
 
 class TestFeedForward:
@@ -116,7 +116,7 @@ class TestFeedForward:
         cfg = self.get_test_config()
         ff = FeedForward(cfg)
         
-        from tgedr_languagemodels.activations import GELU
+        from tgedr_lm.activations import GELU
         gelu_found = any(isinstance(layer, GELU) for layer in ff.layers)
         assert gelu_found
 

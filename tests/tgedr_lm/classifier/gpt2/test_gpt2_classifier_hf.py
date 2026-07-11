@@ -8,11 +8,11 @@ from datasets import Dataset as HFDataset
 from types import SimpleNamespace
 from torch.utils.data import DataLoader, TensorDataset
 
-from tgedr_languagemodels.classifier.gpt2.configuration import ClassifierConfiguration
-import tgedr_languagemodels.classifier.gpt2.hyperparam_search as hyperparam_search_module
-from tgedr_languagemodels.classifier.gpt2.hyperparam_search import HyperParamSearch
-from tgedr_languagemodels.classifier.gpt2.model import GPT2Classifier
-from tgedr_languagemodels.classifier.gpt2.text_dataset import TextDataset
+from tgedr_lm.classifier.gpt2.configuration import ClassifierConfiguration
+import tgedr_lm.classifier.gpt2.hyperparam_search as hyperparam_search_module
+from tgedr_lm.classifier.gpt2.hyperparam_search import HyperParamSearch
+from tgedr_lm.classifier.gpt2.model import GPT2Classifier
+from tgedr_lm.classifier.gpt2.text_dataset import TextDataset
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 

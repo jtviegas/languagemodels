@@ -3,8 +3,8 @@
 import torch
 from torch import nn
 
-from tgedr_languagemodels.activations import GELU
-from tgedr_languagemodels.configuration import BaseModelConfig
+from tgedr_lm.activations import GELU
+from tgedr_lm.configuration import BaseModelConfig
 
 
 class FeedForward(nn.Module):

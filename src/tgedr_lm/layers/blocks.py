@@ -7,10 +7,10 @@ and feed-forward layers with residual connections and layer normalization.
 from torch import nn
 import torch
 
-from tgedr_languagemodels.configuration import BaseModelConfig
-from tgedr_languagemodels.layers.attention import MultiHeadAttention
-from tgedr_languagemodels.layers.feed_forward import FeedForward
-from tgedr_languagemodels.layers.normalization import LayerNormalization
+from tgedr_lm.configuration import BaseModelConfig
+from tgedr_lm.layers.attention import MultiHeadAttention
+from tgedr_lm.layers.feed_forward import FeedForward
+from tgedr_lm.layers.normalization import LayerNormalization
 
 
 class TransformerBlock(nn.Module):
