@@ -2,7 +2,7 @@
 
 import pytest
 import torch
-from tgedr_languagemodels.layers.normalization import LayerNormalization
+from tgedr_lm.layers.normalization import LayerNormalization
 
 
 class TestLayerNormalization:

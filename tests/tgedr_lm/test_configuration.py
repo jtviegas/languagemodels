@@ -1,7 +1,7 @@
 """Unit tests for the configuration module."""
 
 import pytest
-from tgedr_languagemodels.configuration import BaseModelConfig, GPT2_MODEL_CONFIGS
+from tgedr_lm.configuration import BaseModelConfig, GPT2_MODEL_CONFIGS
 
 
 class TestBaseModelConfig:

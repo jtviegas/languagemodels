@@ -5,11 +5,11 @@ import torch
 from torch import nn
 import numpy as np
 
-from tgedr_languagemodels.classifier.gpt2.configuration import ClassifierConfiguration
-from transformers import PreTrainedModel, Trainer, TrainingArguments
+from tgedr_lm.classifier.gpt2.configuration import ClassifierConfiguration
+from transformers import PreTrainedModel
 from transformers.modeling_outputs import SequenceClassifierOutput
-from tgedr_languagemodels.layers.blocks import TransformerBlock
-from tgedr_languagemodels.layers.normalization import LayerNormalization
+from tgedr_lm.layers.blocks import TransformerBlock
+from tgedr_lm.layers.normalization import LayerNormalization
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class GPT2Classifier(PreTrainedModel):
 
             The device to run the model on.
         """
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        return next(self.parameters()).device
 
     @staticmethod
     def compute_metrics(eval_pred) -> dict[str, float]:
@@ -85,7 +85,7 @@ class GPT2Classifier(PreTrainedModel):
 
         preds = np.argmax(logits[:, -1, :], axis=-1)
         return {"accuracy": float((preds == labels).mean())}
-    
+
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor | None = None,
         labels: torch.Tensor | None = None,
         **kwargs,
@@ -161,7 +161,7 @@ class GPT2Classifier(PreTrainedModel):
         if was_training:
             self.train()
         return torch.argmax(logits, dim=-1)
-      
+
     def _compute_logits(self, input_ids: torch.Tensor) -> torch.Tensor:
         """Compute classifier logits for a batch of token ids."""
         _, seq_len = input_ids.shape
