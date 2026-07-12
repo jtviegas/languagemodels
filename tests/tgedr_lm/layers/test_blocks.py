@@ -2,16 +2,17 @@
 
 import pytest
 import torch
+from tgedr_lm.configuration import ClassifierBaseConfiguration
 from tgedr_lm.layers.blocks import TransformerBlock
-from tgedr_lm.configuration import BaseModelConfig
+
 
 
 class TestTransformerBlock:
     """Test suite for TransformerBlock."""
 
-    def get_test_config(self) -> BaseModelConfig:
+    def get_test_config(self) -> ClassifierBaseConfiguration:
         """Get a test configuration."""
-        return BaseModelConfig(
+        return ClassifierBaseConfiguration(
             vocabulary_size=50257,
             embeddings_dimension=128,
             context_length=512,
@@ -46,7 +47,7 @@ class TestTransformerBlock:
     def test_block_preserves_embeddings_dimension(self) -> None:
         """Test that TransformerBlock preserves embedding dimension."""
         for emb_dim in [64, 128, 256]:
-            cfg = BaseModelConfig(
+            cfg = ClassifierBaseConfiguration(
                 vocabulary_size=50257,
                 embeddings_dimension=emb_dim,
                 context_length=512,
@@ -181,7 +182,7 @@ class TestTransformerBlock:
     def test_block_multiple_heads(self) -> None:
         """Test TransformerBlock with different numbers of heads."""
         for num_heads in [4, 8, 16]:
-            cfg = BaseModelConfig(
+            cfg = ClassifierBaseConfiguration(
                 vocabulary_size=50257,
                 embeddings_dimension=256,  # Divisible by all head counts
                 context_length=512,

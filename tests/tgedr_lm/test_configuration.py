@@ -1,78 +1,54 @@
-"""Unit tests for the configuration module."""
+"""Unit tests for ClassifierBaseConfiguration and TrainingArgs."""
 
 import pytest
-from tgedr_lm.configuration import BaseModelConfig, GPT2_MODEL_CONFIGS
+from transformers import TrainingArguments
+
+from tgedr_lm.commons.errors import UnknownTrainingArgsError
+from tgedr_lm.configuration import ClassifierBaseConfiguration, TrainingArgs
+from tgedr_lm.configuration import GPT2_MODEL_CONFIGS
 
 
-class TestBaseModelConfig:
-    """Test suite for BaseModelConfig dataclass."""
+def test_to_training_arguments_packages_all_fields() -> None:
+    args = TrainingArgs(
+        output_dir="./tmp",
+        num_train_epochs=3,
+        per_device_train_batch_size=4,
+        learning_rate=1e-4,
+    )
 
-    def test_config_creation(self) -> None:
-        """Test creating a BaseModelConfig instance."""
-        config = BaseModelConfig(
-            vocabulary_size=50257,
-            embeddings_dimension=768,
-            context_length=1024,
-            n_layers=12,
-            drop_rate=0.1,
-            stride=1,
-            n_heads=12,
-        )
-        assert config.vocabulary_size == 50257
-        assert config.embeddings_dimension == 768
-        assert config.context_length == 1024
-        assert config.n_layers == 12
-        assert config.drop_rate == 0.1
-        assert config.stride == 1
-        assert config.n_heads == 12
-        assert config.qkv_bias is False
+    training_arguments = args.to_training_arguments()
 
-    def test_config_with_qkv_bias(self) -> None:
-        """Test creating a BaseModelConfig with qkv_bias."""
-        config = BaseModelConfig(
-            vocabulary_size=50257,
-            embeddings_dimension=768,
-            context_length=1024,
-            n_layers=12,
-            drop_rate=0.1,
-            stride=1,
-            n_heads=12,
-            qkv_bias=True,
-        )
-        assert config.qkv_bias is True
+    assert isinstance(training_arguments, TrainingArguments)
+    assert training_arguments.output_dir.endswith("tmp")
+    assert training_arguments.num_train_epochs == 3
+    assert training_arguments.per_device_train_batch_size == 4
+    assert training_arguments.learning_rate == 1e-4
 
-    def test_config_default_qkv_bias(self) -> None:
-        """Test that qkv_bias defaults to False."""
-        config = BaseModelConfig(
-            vocabulary_size=50257,
-            embeddings_dimension=768,
-            context_length=1024,
-            n_layers=12,
-            drop_rate=0.1,
-            stride=1,
-            n_heads=12,
-        )
-        assert config.qkv_bias is False
 
-    def test_config_is_dataclass(self) -> None:
-        """Test that BaseModelConfig is a dataclass."""
-        from dataclasses import is_dataclass
-        assert is_dataclass(BaseModelConfig)
+def test_build_training_arguments_applies_updates() -> None:
+    args = TrainingArgs()
+    args.update_from_dict(
+        {
+            "output_dir": "./custom",
+            "learning_rate": 2e-4,
+            "num_train_epochs": 7,
+        }
+    )
+    training_arguments = args.to_training_arguments()
 
-    def test_config_repr(self) -> None:
-        """Test string representation of config."""
-        config = BaseModelConfig(
-            vocabulary_size=50257,
-            embeddings_dimension=768,
-            context_length=1024,
-            n_layers=12,
-            drop_rate=0.1,
-            stride=1,
-            n_heads=12,
-        )
-        repr_str = repr(config)
-        assert "BaseModelConfig" in repr_str
-        assert "50257" in repr_str
+    assert isinstance(training_arguments, TrainingArguments)
+    assert training_arguments.output_dir.endswith("custom")
+    assert training_arguments.learning_rate == 2e-4
+    assert training_arguments.num_train_epochs == 7
+
+
+def test_build_training_arguments_raises_for_unknown_update_key() -> None:
+    try:
+        TrainingArgs().update_from_dict({"unknown_key": 1})
+    except UnknownTrainingArgsError:
+        assert True
+    else:
+        assert False
 
 
 class TestGPT2ModelConfigs:
@@ -127,3 +103,89 @@ class TestGPT2ModelConfigs:
             for key, value in config.items():
                 assert isinstance(value, int), f"{key} in {config_name} is not an int"
                 assert value > 0, f"{key} in {config_name} is not positive"
+
+
+class TestTrainingArgs:
+    """Test TrainingArgs behavior."""
+
+    def test_to_training_arguments_returns_transformers_instance(self) -> None:
+        args = TrainingArgs(output_dir="./tmp", learning_rate=1e-4, num_train_epochs=3)
+
+        training_arguments = args.to_training_arguments()
+
+        assert isinstance(training_arguments, TrainingArguments)
+        assert training_arguments.output_dir.endswith("tmp")
+        assert training_arguments.learning_rate == 1e-4
+        assert training_arguments.num_train_epochs == 3
+
+    def test_update_from_dict_and_set_apply_changes(self) -> None:
+        args = TrainingArgs()
+
+        args.update_from_dict({"learning_rate": 2e-4, "num_train_epochs": 7})
+        args.set("per_device_train_batch_size", 16)
+
+        assert args.learning_rate == 2e-4
+        assert args.num_train_epochs == 7
+        assert args.per_device_train_batch_size == 16
+
+    def test_update_from_dict_raises_for_unknown_key(self) -> None:
+        args = TrainingArgs()
+
+        with pytest.raises(UnknownTrainingArgsError):
+            args.update_from_dict({"unknown_key": 1})
+
+
+class TestClassifierBaseConfiguration:
+    """Test ClassifierBaseConfiguration behavior."""
+
+    def test_initialization_sets_classifier_fields(self) -> None:
+        cfg = ClassifierBaseConfiguration(
+            vocabulary_size=100,
+            embeddings_dimension=32,
+            context_length=16,
+            n_layers=2,
+            drop_rate=0.2,
+            stride=2,
+            n_heads=4,
+            qkv_bias=True,
+            n_classes=3,
+            model_type="classifier-gpt2",
+        )
+
+        assert cfg.vocabulary_size == 100
+        assert cfg.embeddings_dimension == 32
+        assert cfg.context_length == 16
+        assert cfg.n_layers == 2
+        assert cfg.drop_rate == 0.2
+        assert cfg.stride == 2
+        assert cfg.n_heads == 4
+        assert cfg.qkv_bias is True
+        assert cfg.n_classes == 3
+        assert cfg.model_type == "classifier-gpt2"
+
+    def test_set_updates_known_field(self) -> None:
+        cfg = ClassifierBaseConfiguration(n_classes=2)
+
+        cfg.set("n_classes", 5)
+
+        assert cfg.n_classes == 5
+
+    def test_to_dict_returns_pretrained_config_dictionary(self) -> None:
+        cfg = ClassifierBaseConfiguration()
+
+        cfg_dict = cfg.to_dict()
+        assert isinstance(cfg_dict, dict)
+        assert "transformers_version" in cfg_dict
+
+    def test_update_from_dict_raises_for_unknown_key(self) -> None:
+        cfg = ClassifierBaseConfiguration()
+
+        with pytest.raises(UnknownTrainingArgsError):
+            cfg.update_from_dict({"n_classes": 4})
+
+    def test_update_from_dict_updates_known_pretrained_config_field(self) -> None:
+        cfg = ClassifierBaseConfiguration()
+
+        cfg.update_from_dict({"transformers_version": "test-version"})
+
+        assert cfg.transformers_version == "test-version"

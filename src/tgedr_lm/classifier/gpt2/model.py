@@ -1,20 +1,164 @@
 """GPT model definition and supporting layers for language modeling."""
 
+from abc import abstractmethod
 import logging
 import torch
 from torch import nn
 import numpy as np
 
-from tgedr_lm.classifier.gpt2.configuration import ClassifierConfiguration
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import SequenceClassifierOutput
+from tgedr_lm.configuration import ClassifierBaseConfiguration
 from tgedr_lm.layers.blocks import TransformerBlock
 from tgedr_lm.layers.normalization import LayerNormalization
 
 logger = logging.getLogger(__name__)
 
 
-class GPT2Classifier(PreTrainedModel):
+class GPT2ClassifierBase(PreTrainedModel):
+    """Base class for GPT-2 classification models.
+
+    This abstract base class provides common functionality for GPT-2 based
+    classifiers, including model initialization, device management, metrics
+    computation, and loss calculation.
+    """
+
+    def __init__(self, cfg: ClassifierBaseConfiguration) -> None:
+        """Initialize GPT-2 model layers from the given configuration.
+
+        Parameters
+        ----------
+        cfg : ClassifierConfiguration
+            Model configuration containing vocabulary size, context length,
+            embedding dimension, dropout rate, and number of transformer layers.
+        """
+        super().__init__(cfg)
+
+    @property
+    def device(self) -> torch.device:
+        """Return the device to run the model on.
+
+        Returns
+        -------
+        torch.device
+
+            The device to run the model on.
+        """
+        return next(self.parameters()).device
+
+    @staticmethod
+    def compute_metrics(eval_pred) -> dict[str, float]:
+        """Compute accuracy, macro precision, macro recall, and macro F-score from logits."""
+        logits, labels = eval_pred
+
+        if isinstance(logits, tuple):
+            logits = logits[0]
+
+        if isinstance(logits, torch.Tensor):
+            logits = logits.detach().cpu().numpy()
+
+        if isinstance(labels, torch.Tensor):
+            labels = labels.detach().cpu().numpy()
+
+        if labels.ndim > 1:
+            labels = np.argmax(labels, axis=-1)
+
+        labels = labels.reshape(-1)
+
+        if logits.ndim == 3:
+            logits = logits[:, -1, :]
+
+        preds = np.argmax(logits, axis=-1).reshape(-1)
+
+        classes = np.unique(np.concatenate((labels, preds)))
+        precisions = []
+        recalls = []
+        f_scores = []
+
+        for cls in classes:
+            tp = np.sum((preds == cls) & (labels == cls))
+            fp = np.sum((preds == cls) & (labels != cls))
+            fn = np.sum((preds != cls) & (labels == cls))
+
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            f_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+            precisions.append(float(precision))
+            recalls.append(float(recall))
+            f_scores.append(float(f_score))
+
+        macro_precision = float(np.mean(precisions)) if precisions else 0.0
+        macro_recall = float(np.mean(recalls)) if recalls else 0.0
+        macro_f = float(np.mean(f_scores)) if f_scores else 0.0
+
+        return {
+            "accuracy": float((preds == labels).mean()),
+            "precision": macro_precision,
+            "recall": macro_recall,
+            "f": macro_f,
+        }
+
+    @abstractmethod
+    def compute_logits(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Compute classifier logits for a batch of token ids."""
+
+    def calculate_batch_loss(
+        self,
+        input_batch: torch.Tensor,
+        target_batch: torch.Tensor,
+        device: torch.device | None = None,
+    ) -> torch.Tensor:
+        """Calculate cross-entropy loss for a batch of inputs and targets.
+
+        Parameters
+        ----------
+        input_batch : torch.Tensor
+            The input tensor batch.
+        target_batch : torch.Tensor
+            The target tensor batch.
+        device : torch.device | None, optional
+            The device to compute on. If None, uses self.device.
+
+        Returns
+        -------
+        torch.Tensor
+            The cross-entropy loss for the batch.
+        """
+        logger.debug(f"[calculate_batch_loss|in] ({input_batch}, {target_batch})")
+        target_device = self.device if device is None else device
+        input_batch = input_batch.to(target_device)
+        target_batch = target_batch.to(target_device)
+        logits = self.compute_logits(input_batch)[:, -1, :]
+        loss = torch.nn.functional.cross_entropy(logits, target_batch)
+        logger.debug(f"[calculate_batch_loss|out] => {loss}")
+        return loss
+
+    def infer(self, in_idx: torch.Tensor) -> torch.Tensor:
+        """Perform a forward pass through the model to obtain class logits.
+
+        Parameters
+        ----------
+        in_idx : torch.Tensor
+            Input tensor of shape (batch_size, sequence_length) containing token indices.
+
+        Returns
+        -------
+        torch.Tensor
+            Predicted class indices.
+        """
+        in_idx = in_idx.to(self.device)
+        was_training = self.training
+        if was_training:
+            self.eval()
+        with torch.no_grad():  # Models inference without gradient tracking
+            logits = self.compute_logits(in_idx)[:, -1, :]
+        if was_training:
+            self.train()
+        return torch.argmax(logits, dim=-1)
+
+
+class GPT2Classifier(GPT2ClassifierBase):
     """GPT-2 based classifier for text classification tasks.
 
     This class extends the GPT2Model to add a classification head for predicting
@@ -37,7 +181,7 @@ class GPT2Classifier(PreTrainedModel):
         Output linear layer for classification.
     """
 
-    def __init__(self, cfg: ClassifierConfiguration) -> None:
+    def __init__(self, cfg: ClassifierBaseConfiguration) -> None:
         """Initialize GPT-2 model layers from the given configuration.
 
         Parameters
@@ -57,38 +201,24 @@ class GPT2Classifier(PreTrainedModel):
         self.final_norm = LayerNormalization(cfg.embeddings_dimension)
         self.out_head = nn.Linear(cfg.embeddings_dimension, cfg.n_classes, bias=False)
 
-    @property
-    def device(self) -> torch.device:
-        """Return the device to run the model on.
+    def compute_logits(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Compute classifier logits for a batch of token ids."""
+        _, seq_len = input_ids.shape
+        input_ids = input_ids.to(self.device)
+        tok_embeds = self.tok_emb(input_ids)
+        pos_embeds = self.pos_emb(torch.arange(seq_len, device=self.device))
+        x = tok_embeds + pos_embeds
+        x = self.drop_emb(x)
+        x = self.trf_blocks(x)
+        x = self.final_norm(x)
+        return self.out_head(x)
 
-        Returns
-        -------
-        torch.device
-
-            The device to run the model on.
-        """
-        return next(self.parameters()).device
-
-    @staticmethod
-    def compute_metrics(eval_pred) -> dict[str, float]:
-        """Compute accuracy using classifier logits from the last token."""
-        logits, labels = eval_pred
-
-        if isinstance(logits, tuple):
-            logits = logits[0]
-
-        if isinstance(logits, torch.Tensor):
-            logits = logits.detach().cpu().numpy()
-
-        if isinstance(labels, torch.Tensor):
-            labels = labels.detach().cpu().numpy()
-
-        preds = np.argmax(logits[:, -1, :], axis=-1)
-        return {"accuracy": float((preds == labels).mean())}
-
-    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor | None = None,
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
         labels: torch.Tensor | None = None,
-        **kwargs,
+        **kwargs: any,
     ) -> SequenceClassifierOutput:
         """Forward pass compatible with Hugging Face Trainer.
 
@@ -109,7 +239,7 @@ class GPT2Classifier(PreTrainedModel):
             Hugging Face classifier output containing logits and optionally loss.
         """
         del attention_mask, kwargs
-        logits = self._compute_logits(input_ids)
+        logits = self.compute_logits(input_ids)
         loss = None
 
         if labels is not None:
@@ -138,70 +268,6 @@ class GPT2Classifier(PreTrainedModel):
             param.requires_grad = True
         for param in self.out_head.parameters():
             param.requires_grad = True
-
-    def infer(self, in_idx: torch.Tensor) -> torch.Tensor:
-        """Perform a forward pass through the model to obtain class logits.
-
-        Parameters
-        ----------
-        in_idx : torch.Tensor
-            Input tensor of shape (batch_size, sequence_length) containing token indices.
-
-        Returns
-        -------
-        torch.Tensor
-            Predicted class indices.
-        """
-        in_idx = in_idx.to(self.device)
-        was_training = self.training
-        if was_training:
-            self.eval()
-        with torch.no_grad():  # Models inference without gradient tracking
-            logits = self._compute_logits(in_idx)[:, -1, :]
-        if was_training:
-            self.train()
-        return torch.argmax(logits, dim=-1)
-
-    def _compute_logits(self, input_ids: torch.Tensor) -> torch.Tensor:
-        """Compute classifier logits for a batch of token ids."""
-        _, seq_len = input_ids.shape
-        input_ids = input_ids.to(self.device)
-        tok_embeds = self.tok_emb(input_ids)
-        pos_embeds = self.pos_emb(torch.arange(seq_len, device=self.device))
-        x = tok_embeds + pos_embeds
-        x = self.drop_emb(x)
-        x = self.trf_blocks(x)
-        x = self.final_norm(x)
-        return self.out_head(x)
-
-    def _calculate_batch_loss(
-        self,
-        input_batch: torch.Tensor,
-        target_batch: torch.Tensor,
-        device: torch.device | None = None,
-    ) -> torch.Tensor:
-        """Calculate cross-entropy loss for a batch of inputs and targets.
-
-        Parameters
-        ----------
-        input_batch : torch.Tensor
-            The input tensor batch.
-        target_batch : torch.Tensor
-            The target tensor batch.
-
-        Returns
-        -------
-        torch.Tensor
-            The cross-entropy loss for the batch.
-        """
-        logger.debug(f"[calculate_batch_loss|in] ({input_batch}, {target_batch})")
-        target_device = self.device if device is None else device
-        input_batch = input_batch.to(target_device)
-        target_batch = target_batch.to(target_device)
-        logits = self._compute_logits(input_batch)[:, -1, :]
-        loss = torch.nn.functional.cross_entropy(logits, target_batch)
-        logger.debug(f"[calculate_batch_loss|out] => {loss}")
-        return loss
 
     def _assign(self, left, right) -> torch.nn.Parameter:
         """Validate shapes and return right as a new Parameter with the same shape as left.
@@ -289,5 +355,3 @@ class GPT2Classifier(PreTrainedModel):
 
         self.final_norm.scale = self._assign(self.final_norm.scale, params["g"])
         self.final_norm.shift = self._assign(self.final_norm.shift, params["b"])
-
-    

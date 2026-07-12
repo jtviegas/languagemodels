@@ -4,10 +4,16 @@ This module provides classes and utilities for handling tokenized text datasets,
 including the TextDataset class for creating Hugging Face Dataset objects
 with automatic tokenization, padding, and truncation.
 """
+
 from datasets import Dataset as HFDataset
 
 
 class TextDataset(HFDataset):
+    """Dataset class for tokenized text with automatic padding and truncation.
+
+    This class extends Hugging Face Dataset to handle text tokenization,
+    padding, and truncation for machine learning models.
+    """
 
     def __init__(
         self,
@@ -17,7 +23,15 @@ class TextDataset(HFDataset):
         max_length=None,
         pad_token_id=50256,
     ) -> None:
+        """Initialize TextDataset with tokenized text and labels.
 
+        Args:
+            tokenizer: Tokenizer instance with encode method.
+            texts: List of text strings to tokenize.
+            labels: List of integer labels corresponding to texts.
+            max_length: Maximum sequence length. If None, uses longest encoded text.
+            pad_token_id: Token ID used for padding sequences (default: 50256).
+        """
         self.texts = texts
         self.labels = labels
 
@@ -44,11 +58,11 @@ class TextDataset(HFDataset):
         )
 
         super().__init__(
-            arrow_table=hf_dataset._data,
+            arrow_table=hf_dataset._data,  # noqa: SLF001
             info=hf_dataset.info,
             split=hf_dataset.split,
-            indices_table=hf_dataset._indices,
-            fingerprint=hf_dataset._fingerprint,
+            indices_table=hf_dataset._indices,  # noqa: SLF001
+            fingerprint=hf_dataset._fingerprint,  # noqa: SLF001
         )
 
     def _longest_encoded_length(self) -> int:

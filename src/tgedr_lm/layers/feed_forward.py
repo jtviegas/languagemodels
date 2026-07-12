@@ -4,18 +4,18 @@ import torch
 from torch import nn
 
 from tgedr_lm.activations import GELU
-from tgedr_lm.configuration import BaseModelConfig
+from tgedr_lm.configuration import ClassifierBaseConfiguration
 
 
 class FeedForward(nn.Module):
     """Transformer feed-forward block with expansion and projection layers."""
 
-    def __init__(self, cfg: BaseModelConfig) -> None:
+    def __init__(self, cfg: ClassifierBaseConfiguration) -> None:
         """Initialize feed-forward layers from configuration.
 
         Parameters
         ----------
-        cfg : BaseModelConfig
+        cfg : ClassifierBaseConfiguration
             Model configuration containing the embedding dimension.
         """
         super().__init__()

@@ -7,7 +7,7 @@ and feed-forward layers with residual connections and layer normalization.
 from torch import nn
 import torch
 
-from tgedr_lm.configuration import BaseModelConfig
+from tgedr_lm.configuration import ClassifierBaseConfiguration
 from tgedr_lm.layers.attention import MultiHeadAttention
 from tgedr_lm.layers.feed_forward import FeedForward
 from tgedr_lm.layers.normalization import LayerNormalization
@@ -34,12 +34,12 @@ class TransformerBlock(nn.Module):
 
     """
 
-    def __init__(self, cfg: BaseModelConfig) -> None:
+    def __init__(self, cfg: ClassifierBaseConfiguration) -> None:
         """Initialize the transformer block with configuration.
 
         Parameters
         ----------
-        cfg : BaseModelConfig
+        cfg : ClassifierBaseConfiguration
             Configuration object containing model hyperparameters.
 
         """
