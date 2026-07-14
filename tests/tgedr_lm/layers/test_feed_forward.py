@@ -2,16 +2,16 @@
 
 import pytest
 import torch
-from tgedr_languagemodels.layers.feed_forward import FeedForward
-from tgedr_languagemodels.configuration import BaseModelConfig
+from tgedr_lm.configuration import ClassifierBaseConfiguration
+from tgedr_lm.layers.feed_forward import FeedForward
 
 
 class TestFeedForward:
     """Test suite for FeedForward layer."""
 
-    def get_test_config(self) -> BaseModelConfig:
+    def get_test_config(self) -> ClassifierBaseConfiguration:
         """Get a test configuration."""
-        return BaseModelConfig(
+        return ClassifierBaseConfiguration(
             vocabulary_size=50257,
             embeddings_dimension=128,
             context_length=512,
@@ -53,7 +53,7 @@ class TestFeedForward:
     def test_feedforward_different_embedding_dims(self) -> None:
         """Test FeedForward with different embedding dimensions."""
         for emb_dim in [64, 128, 256, 512]:
-            cfg = BaseModelConfig(
+            cfg = ClassifierBaseConfiguration(
                 vocabulary_size=50257,
                 embeddings_dimension=emb_dim,
                 context_length=512,
@@ -116,7 +116,7 @@ class TestFeedForward:
         cfg = self.get_test_config()
         ff = FeedForward(cfg)
         
-        from tgedr_languagemodels.activations import GELU
+        from tgedr_lm.activations import GELU
         gelu_found = any(isinstance(layer, GELU) for layer in ff.layers)
         assert gelu_found
 

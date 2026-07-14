@@ -2,7 +2,7 @@
 
 import pytest
 import torch
-from tgedr_languagemodels.activations import GELU
+from tgedr_lm.activations import GELU
 
 
 class TestGELU:

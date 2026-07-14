@@ -1,5 +1,5 @@
 [project]
-name = "tgedr-languagemodels"
+name = "tgedr-lm"
 version = "0.0.1"
 description = "this is a template for a python package"
 authors = [
@@ -21,6 +21,9 @@ dependencies = [
     "torch>=2.11.0",
     "aiohttp>=3.14.0",
     "datasets>=5.0.0",
+    "transformers>=5.12.1",
+    "accelerate>=1.14.0",
+    "optuna>=4.9.0",
 ]
 
 [dependency-groups]
@@ -56,7 +59,7 @@ where = ["src"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-"*" = ["CHANGELOG"]
+"*" = ["CHANGELOG", "README.md"]
 
 [tool.coverage.paths]
 source = ["src/"]
@@ -122,6 +125,9 @@ exclude = [
     "typings/",
     "notebook/",
     "src/tgedr_languagemodels/utils/gpt_download.py",
+    "src/tgedr_languagemodels/huggingface_wrapper.py",
+    "src/tgedr_languagemodels/classifier/",
+    "examples/huggingface_trainer_example.py"
 ]
 
 line-length = 120
@@ -131,7 +137,7 @@ indent-width = 4
 select = ["ALL"]
 ignore = ["D203", "S101", "D104", "INP001", "D213", "COM812", "I001", 
     "D401", "D407", "RET504", "PLR2004", "FA102", "E501", "EXE002", "PLR0913", 
-    "PLR0912", "C901", "PLR0911", "G004", "D413", "ANN001"]
+    "PLR0912", "C901", "PLR0911", "G004", "D413", "ANN001", "ANN401"]
 fixable = ["ALL"]
 unfixable = []
 # Allow unused variables when underscore-prefixed.

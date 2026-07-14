@@ -2,7 +2,7 @@
 
 import pytest
 import torch
-from tgedr_languagemodels.layers.attention import MultiHeadAttention
+from tgedr_lm.layers.attention import MultiHeadAttention
 
 
 class TestMultiHeadAttention:
