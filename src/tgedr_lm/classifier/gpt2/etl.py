@@ -3,7 +3,6 @@
 import logging
 from typing import Any
 from pathlib import Path
-import shutil
 import tempfile
 from datasets import load_dataset
 import tiktoken
@@ -14,7 +13,6 @@ from tgedr_lm.classifier.gpt2.hyperparam_search import HyperParamSearch
 from tgedr_lm.classifier.gpt2.model import GPT2Classifier
 from tgedr_lm.configuration import ClassifierBaseConfiguration, TrainingArgs
 
-MODEL_CARD: Path = Path(__file__).resolve().parent / "README.md"
 OUTPUT_DIR: Path = Path(tempfile.gettempdir()) / "gpt2classifier"
 
 logging.basicConfig(
@@ -139,7 +137,6 @@ class Gpt2ClassifierEtl(Etl):
             eval_dataset=val_dataset,
             compute_metrics=model.compute_metrics,
         )
-        shutil.copy2(MODEL_CARD, OUTPUT_DIR / MODEL_CARD.name)
         self._trainer.train()
         final_metrics = self._trainer.evaluate()
         logger.info(f"Final evaluation metrics: {final_metrics}")
