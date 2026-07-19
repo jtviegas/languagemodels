@@ -1,7 +1,7 @@
 name: cicd
 
 env:
-  TEST_COVERAGE_THRESHOLD: 80
+  TEST_COVERAGE_THRESHOLD: 100
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
         java-version: '8'
     - uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.12'
     - name: 'install uv'
       run: curl -LsSf https://astral.sh/uv/install.sh | sh
     - name: install requirements

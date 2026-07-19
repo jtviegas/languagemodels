@@ -24,6 +24,7 @@ dependencies = [
     "transformers>=5.12.1",
     "accelerate>=1.14.0",
     "optuna>=4.9.0",
+    "tensorboard>=2.21.0",
 ]
 
 [dependency-groups]

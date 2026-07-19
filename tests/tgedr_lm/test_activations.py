@@ -59,10 +59,13 @@ class TestGELU:
         assert x.grad is not None
         assert not torch.all(x.grad == 0)
 
-    @pytest.mark.skip(reason="Gradient check numerically unstable for GELU")
     def test_gelu_differentiable(self) -> None:
         """Test that GELU is differentiable."""
-        pass
+        gelu = GELU().double()
+        torch.manual_seed(0)
+        # Keep values moderate to avoid finite-difference instability in tanh-based GELU approximation.
+        x = torch.randn(2, 3, dtype=torch.float64, requires_grad=True) * 0.5
+        assert torch.autograd.gradcheck(gelu, (x,), eps=1e-6, atol=1e-4, rtol=1e-3)
 
     def test_gelu_antisymmetric_tendency(self) -> None:
         """Test GELU has some antisymmetric-like behavior."""

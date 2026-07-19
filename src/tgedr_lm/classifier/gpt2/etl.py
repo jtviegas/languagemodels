@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 from pathlib import Path
+import shutil
 import tempfile
 from datasets import load_dataset
 import tiktoken
@@ -12,6 +13,7 @@ from tgedr_dataops_abs.etl import Etl
 from tgedr_lm.classifier.gpt2.hyperparam_search import HyperParamSearch
 from tgedr_lm.classifier.gpt2.model import GPT2Classifier
 from tgedr_lm.configuration import ClassifierBaseConfiguration, TrainingArgs
+from tgedr_lm.commons.utils_io import load_pickle_compressed
 
 OUTPUT_DIR: Path = Path(tempfile.gettempdir()) / "gpt2classifier"
 
@@ -37,6 +39,8 @@ class Gpt2ClassifierEtl(Etl):
         super().__init__(config)
         self._data = {}
         self._trainer = None
+        self._weights = None
+        self._weights_url = None
 
     def _fetch_data(self, dataset: str) -> Any:
         """Fetch data from source.
@@ -76,13 +80,19 @@ class Gpt2ClassifierEtl(Etl):
         val_dataset = TextDataset(tokenizer=tokenizer, texts=test_texts, labels=test_labels)
         return train_dataset, val_dataset
 
+    def _get_model(self) -> GPT2Classifier:
+        model = GPT2Classifier(ClassifierBaseConfiguration(n_classes=3))
+        if self._weights is not None:
+            model.pretrain(self._weights)
+        return model
+
     def _search_hyperparameters(self) -> dict[str, Any]:
         train_dataset, val_dataset = self.get_datasets(fraction=0.3)
         args = TrainingArgs()
         args.set("output_dir", str(OUTPUT_DIR))
         hp_search = HyperParamSearch(GPT2Classifier.compute_metrics, train_args=args.to_training_arguments())
         hyperparameters = hp_search.search(
-            model=GPT2Classifier(ClassifierBaseConfiguration(n_classes=3)),
+            model=self._get_model(),
             train_dataset=train_dataset,
             val_dataset=val_dataset,
             trials=3,
@@ -90,20 +100,28 @@ class Gpt2ClassifierEtl(Etl):
         return hyperparameters
 
     @Etl.inject_configuration
-    def extract(self, dataset: str) -> Any:
+    def extract(self, dataset: str, weights_url: str | None = None) -> Any:
         """Extract data from source dataset.
 
         Parameters
         ----------
         dataset : str
             Name of the dataset to extract.
+        weights_url : str | None, optional
+            URL to the pretrained weights, by default None
 
         Returns
         -------
         Any
             None
+        weights_url : str
+            URL to the pretrained weights.
         """
         self._fetch_data(dataset)
+
+        if weights_url is not None:
+            self._weights_url = Path(weights_url)
+            self._weights = load_pickle_compressed(weights_url)
 
     def transform(self) -> Any:
         """Transform data by searching hyperparameters and training the model.
@@ -128,7 +146,7 @@ class Gpt2ClassifierEtl(Etl):
         args.set("hub_model_id", "jtviegas/gpt2classifier")
         args.set("output_dir", str(OUTPUT_DIR))
 
-        model = GPT2Classifier(ClassifierBaseConfiguration(n_classes=3))
+        model = self._get_model()
         train_dataset, val_dataset = self.get_datasets(fraction=1.0)
         self._trainer = Trainer(
             model=model,
@@ -149,4 +167,6 @@ class Gpt2ClassifierEtl(Etl):
         Any
             Result of load operation.
         """
+        if self._weights_url is not None:
+            shutil.copy2(self._weights_url, OUTPUT_DIR / self._weights_url.name)
         self._trainer.push_to_hub(commit_message="Training completed!")
