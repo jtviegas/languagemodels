@@ -32,7 +32,7 @@ class ClassifierBaseConfiguration(PretrainedConfig):
         stride: int = 1,
         n_heads: int = 12,
         qkv_bias: bool = True,  # noqa: FBT001, FBT002
-        n_classes: int = 2,
+        n_classes: int | None = None,
         model_type: str = "classifier-gpt2",
         **kwargs: any,
     ) -> None:
